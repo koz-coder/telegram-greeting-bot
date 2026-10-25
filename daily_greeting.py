@@ -21,7 +21,7 @@ HOLIDAYS = {
 }
 
 def get_message():
-now = datetime.now(TZ)
+    now = datetime.now(TZ)
 holiday = HOLIDAYS.get((now.month, now.day))
 
 ```
@@ -41,7 +41,7 @@ return (
 ```
 
 async def main():
-if not BOT_TOKEN or not GROUP_CHAT_ID:
+    if not BOT_TOKEN or not GROUP_CHAT_ID:
 raise ValueError(
 "Не заданы переменные BOT_TOKEN и GROUP_CHAT_ID в GitHub Secrets."
 )
