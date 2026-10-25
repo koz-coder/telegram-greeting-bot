@@ -2,7 +2,6 @@ import os
 import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
 from telegram import Bot
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -22,31 +21,30 @@ HOLIDAYS = {
 
 def get_message():
     now = datetime.now(TZ)
-holiday = HOLIDAYS.get((now.month, now.day))
+    holiday = HOLIDAYS.get((now.month, now.day))
 
 ```
 if holiday:
     return (
         f"{holiday}\n\n"
-        "Желаем всем хорошего настроения, здоровья и успехов! 🌟\n"
-        "Barchangizga yaxshi kayfiyat, sog‘lik va muvaffaqiyat tilaymiz! 🌟"
+        "Желаем всем здоровья и успехов! 🌟\n"
+        "Barchangizga sog‘lik va muvaffaqiyat tilaymiz! 🌟"
     )
 
 return (
     "☀️ Доброе утро, команда!\n"
-    "Желаем всем продуктивного дня, отличного настроения и успехов! 💪\n\n"
+    "Желаем всем продуктивного дня и успехов! 💪\n\n"
     "☀️ Xayrli tong, jamoa!\n"
-    "Barchangizga samarali kun, ajoyib kayfiyat va muvaffaqiyat tilaymiz! 💪"
+    "Barchangizga samarali kun va muvaffaqiyat tilaymiz! 💪"
 )
 ```
 
 async def main():
     if not BOT_TOKEN or not GROUP_CHAT_ID:
-raise ValueError(
-"Не заданы переменные BOT_TOKEN и GROUP_CHAT_ID в GitHub Secrets."
+        raise ValueError(
+"Не заданы BOT_TOKEN и GROUP_CHAT_ID в GitHub Secrets."
 )
 
-```
 bot = Bot(token=BOT_TOKEN)
 
 try:
@@ -56,6 +54,7 @@ try:
         text=get_message()
     )
     print("Сообщение успешно отправлено!")
+
 finally:
     await bot.shutdown()
 ```
