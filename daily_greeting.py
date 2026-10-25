@@ -28,14 +28,11 @@ def get_message():
         return (
             f"{holiday}\n\n"
             "Желаем всем здоровья и успехов! 🌟\n"
-            "Barchangizga sog‘lik va muvaffaqiyat tilaymiz! 🌟"
         )
 
     return (
-        "☀️ Доброе утро, команда!\n"
+        "☀️ Доброе утро!\n"
         "Желаем всем продуктивного дня и успехов! 💪\n\n"
-        "☀️ Xayrli tong, jamoa!\n"
-        "Barchangizga samarali kun va muvaffaqiyat tilaymiz! 💪"
     )
 
 
