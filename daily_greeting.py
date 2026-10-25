@@ -6,6 +6,7 @@ from telegram import Bot
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "").strip()
+MESSAGE_TYPE = os.getenv("MESSAGE_TYPE", "morning").strip().lower()
 
 TZ = ZoneInfo("Asia/Tashkent")
 
@@ -103,12 +104,14 @@ WEEKLY_MESSAGES = {
 
 def get_message():
     now = datetime.now(TZ)
-    holiday = HOLIDAYS.get((now.month, now.day))
 
-    if holiday:
-        return holiday
+    if MESSAGE_TYPE == "morning":
+        return WEEKLY_MESSAGES[now.weekday()]
 
-    return WEEKLY_MESSAGES[now.weekday()]
+    if MESSAGE_TYPE == "holiday":
+        return HOLIDAYS.get((now.month, now.day))
+
+    raise ValueError(f"Неизвестный тип сообщения: {MESSAGE_TYPE}")
 
 
 async def main():
@@ -117,13 +120,19 @@ async def main():
             "Не заданы BOT_TOKEN и GROUP_CHAT_ID в переменных окружения."
         )
 
+    message = get_message()
+
+    if message is None:
+        print("Сегодня нет праздника. Сообщение не отправляется.")
+        return
+
     bot = Bot(token=BOT_TOKEN)
 
     try:
         await bot.initialize()
         await bot.send_message(
             chat_id=GROUP_CHAT_ID,
-            text=get_message()
+            text=message
         )
         print("Сообщение успешно отправлено!")
     finally:
