@@ -3,26 +3,48 @@ name: Daily Telegram Greeting
 on:
   schedule:
     - cron: "0 4 * * *"
+    - cron: "0 19 * * *"
   workflow_dispatch:
 
 jobs:
-  send-greeting:
+  send-morning-greeting:
+    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 4 * * *'
     runs-on: ubuntu-latest
 
     steps:
-      - name: Get repository code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Send Telegram greeting
+      - name: Send morning greeting
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
+          MESSAGE_TYPE: morning
+        run: python daily_greeting.py
+
+  send-holiday-greeting:
+    if: github.event.schedule == '0 19 * * *'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send holiday greeting
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
+          MESSAGE_TYPE: holiday
         run: python daily_greeting.py
