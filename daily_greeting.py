@@ -23,7 +23,6 @@ def get_message():
     now = datetime.now(TZ)
     holiday = HOLIDAYS.get((now.month, now.day))
 
-```
 if holiday:
     return (
         f"{holiday}\n\n"
@@ -37,7 +36,6 @@ return (
     "☀️ Xayrli tong, jamoa!\n"
     "Barchangizga samarali kun va muvaffaqiyat tilaymiz! 💪"
 )
-```
 
 async def main():
     if not BOT_TOKEN or not GROUP_CHAT_ID:
@@ -57,7 +55,6 @@ try:
 
 finally:
     await bot.shutdown()
-```
 
 if **name** == "**main**":
 asyncio.run(main())
