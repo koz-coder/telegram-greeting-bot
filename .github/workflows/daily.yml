@@ -19,6 +19,9 @@ on:
           - holiday
           - news
 
+permissions:
+  contents: write
+
 jobs:
   send-morning-greeting:
     if: |
@@ -87,6 +90,18 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
         run: python news.py
+
+      - name: Save news history
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add sent_news.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Update sent news history"
+            git push
+          else
+            echo "News history has not changed."
+          fi
 
   send-holiday-greeting:
     if: |
