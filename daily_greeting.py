@@ -134,7 +134,7 @@ def get_exchange_rates():
         code = currency.get("Ccy")
 
         if code in CURRENCIES:
-            result[code] = currency["Rate"]
+            result[code] = currency.get("Rate")
             actual_date = currency.get("Date")
 
     missing = set(CURRENCIES) - set(result)
@@ -145,7 +145,8 @@ def get_exchange_rates():
         )
 
     lines = [
-        "💰 КУРСЫ ВАЛЮТ ЦБ УЗБЕКИСТАНА",
+        "💰 ОФИЦИАЛЬНЫЕ КУРСЫ ВАЛЮТ 🇺🇿",
+        "",
         f"📅 Дата курса: {actual_date}",
         "",
     ]
@@ -153,8 +154,11 @@ def get_exchange_rates():
     for code, name in CURRENCIES.items():
         lines.append(f"{name}: {result[code]} сум")
 
-    lines.append("")
-    lines.append("Источник: Центральный банк Республики Узбекистан 🇺🇿")
+    lines.extend([
+        "",
+        "Источник: Центральный банк Республики Узбекистан.",
+        "🌐 https://cbu.uz/ru/arkhiv-kursov-valyut/"
+    ])
 
     return "\n".join(lines)
 
@@ -176,29 +180,32 @@ async def main():
         raise ValueError("Не заданы BOT_TOKEN и GROUP_CHAT_ID.")
 
     now = datetime.now(TZ)
-    message = get_message()
-
-    if message is None:
-        print("Сегодня нет праздника. Сообщение не отправляется.")
-        return
-
     bot = Bot(token=BOT_TOKEN)
 
     try:
         await bot.initialize()
 
-        if MESSAGE_TYPE == "morning":
-            try:
-                rates = await asyncio.to_thread(get_exchange_rates)
-                message += "\n\n" + rates
-            except Exception as error:
-                print(f"Не удалось получить курсы валют: {error}")
-                message += (
-                    "\n\n💰 Курсы валют временно недоступны. "
-                    "Попробуем получить их позже."
-                )
+        # Отдельная отправка курсов валют
+        if MESSAGE_TYPE == "currency":
+            rates = await asyncio.to_thread(get_exchange_rates)
 
+            await bot.send_message(
+                chat_id=GROUP_CHAT_ID,
+                text=rates
+            )
+
+            print("Курсы валют успешно отправлены!")
+            return
+
+        message = get_message()
+
+        if message is None:
+            print("Сегодня нет праздника. Сообщение не отправляется.")
+            return
+
+        # Утреннее приветствие по пятницам с фотографией
         if MESSAGE_TYPE == "morning" and now.weekday() == 4:
+
             if not PHOTO_PATH.exists():
                 raise FileNotFoundError(
                     f"Фото не найдено: {PHOTO_PATH}"
