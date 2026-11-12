@@ -6,10 +6,21 @@ on:
     - cron: "0 5 * * *"
     - cron: "0 19 * * *"
   workflow_dispatch:
+    inputs:
+      task:
+        description: "Что запустить?"
+        required: true
+        type: choice
+        options:
+          - currency
+          - morning
+          - holiday
 
 jobs:
   send-morning-greeting:
-    if: github.event_name == 'workflow_dispatch' || github.event.schedule == '0 4 * * *'
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '0 4 * * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.task == 'morning')
     runs-on: ubuntu-latest
 
     steps:
@@ -30,7 +41,9 @@ jobs:
         run: python daily_greeting.py
 
   send-currency-rates:
-    if: github.event.schedule == '0 5 * * *'
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '0 5 * * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.task == 'currency')
     runs-on: ubuntu-latest
 
     steps:
@@ -51,7 +64,9 @@ jobs:
         run: python daily_greeting.py
 
   send-holiday-greeting:
-    if: github.event.schedule == '0 19 * * *'
+    if: |
+      (github.event.schedule == '0 19 * * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.task == 'holiday')
     runs-on: ubuntu-latest
 
     steps:
@@ -60,6 +75,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
 
       - name: Send holiday greeting
         env:
