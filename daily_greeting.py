@@ -11,7 +11,10 @@ MESSAGE_TYPE = os.getenv("MESSAGE_TYPE", "morning").strip().lower()
 
 TZ = ZoneInfo("Asia/Tashkent")
 
-GIF_PATH = Path(__file__).resolve().parent / "juma_muborak.gif"
+PHOTO_PATH = (
+    Path(__file__).resolve().parent
+    / "e535f35b95dfc15a5c320cb2990b5914.jpg"
+)
 
 HOLIDAYS = {
     (1, 1): (
@@ -144,22 +147,22 @@ async def main():
     try:
         await bot.initialize()
 
-        # Пятница — отправляем GIF с поздравлением
+        # Каждую пятницу отправляем фотографию с поздравлением
         if MESSAGE_TYPE == "morning" and now.weekday() == 4:
 
-            if not GIF_PATH.exists():
+            if not PHOTO_PATH.exists():
                 raise FileNotFoundError(
-                    f"GIF не найдена: {GIF_PATH}"
+                    f"Фото не найдено: {PHOTO_PATH}"
                 )
 
-            with open(GIF_PATH, "rb") as gif:
-                await bot.send_animation(
+            with open(PHOTO_PATH, "rb") as photo:
+                await bot.send_photo(
                     chat_id=GROUP_CHAT_ID,
-                    animation=gif,
+                    photo=photo,
                     caption=message
                 )
 
-            print("Пятничная GIF и поздравление отправлены!")
+            print("Пятничная фотография и поздравление отправлены!")
 
         else:
             await bot.send_message(
