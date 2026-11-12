@@ -3,6 +3,8 @@ import asyncio
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+import requests
 from telegram import Bot
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
@@ -16,6 +18,15 @@ PHOTO_PATH = (
     / "e535f35b95dfc15a5c320cb2990b5914.jpg"
 )
 
+CBU_URL = "https://cbu.uz/ru/arkhiv-kursov-valyut/json/"
+
+CURRENCIES = {
+    "USD": "🇺🇸 Доллар США",
+    "RUB": "🇷🇺 Российский рубль",
+    "TRY": "🇹🇷 Турецкая лира",
+    "EUR": "🇪🇺 Евро",
+}
+
 HOLIDAYS = {
     (1, 1): (
         "🎄 С Новым годом, мои дорогие!\n\n"
@@ -24,7 +35,6 @@ HOLIDAYS = {
         "Пусть все будут живы и здоровы, а в доме всегда "
         "царят любовь и взаимопонимание! ❤️"
     ),
-
     (3, 8): (
         "🌷 С 8 Марта, дорогие наши женщины!\n\n"
         "Желаю вам крепкого здоровья, счастья, любви "
@@ -44,7 +54,6 @@ WEEKLY_MESSAGES = {
         "не забывайте, что семья — самое дорогое в жизни.\n\n"
         "Хорошей недели, мои родные! ❤️"
     ),
-
     1: (
         "❤️ Доброе утро, родные мои!\n\n"
         "Желаю всем крепкого здоровья, хорошего настроения "
@@ -55,7 +64,6 @@ WEEKLY_MESSAGES = {
         "Пусть у каждого всё складывается хорошо. "
         "Берегите себя и своих близких! ❤️"
     ),
-
     2: (
         "☀️ Доброе утро, моя дорогая семья!\n\n"
         "В жизни не всегда всё получается сразу, "
@@ -66,7 +74,6 @@ WEEKLY_MESSAGES = {
         "уважение и понимание.\n\n"
         "Удачного дня, мои родные! ❤️"
     ),
-
     3: (
         "🤗 Доброе утро, мои дорогие!\n\n"
         "Хочу пожелать всем спокойного и удачного дня.\n\n"
@@ -77,7 +84,6 @@ WEEKLY_MESSAGES = {
         "Цените друг друга, помогайте и поддерживайте. "
         "Всем добра и здоровья! ❤️"
     ),
-
     4: (
         "🤲 Доброе утро, моя дорогая семья!\n\n"
         "С благословенной пятницей вас! ❤️\n\n"
@@ -89,7 +95,6 @@ WEEKLY_MESSAGES = {
         "Берегите друг друга, мои родные!\n\n"
         "С пятницей! 🤲❤️"
     ),
-
     5: (
         "🏡 Доброе утро, мои любимые!\n\n"
         "Наступили выходные. Желаю всем хорошего отдыха, "
@@ -100,7 +105,6 @@ WEEKLY_MESSAGES = {
         "Пусть дома всегда будет уютно, тепло и спокойно.\n\n"
         "Хороших выходных, родные! ❤️☕"
     ),
-
     6: (
         "☀️ Доброе утро, моя дорогая семья! ❤️\n\n"
         "Пусть воскресенье принесёт всем спокойствие, "
@@ -117,6 +121,44 @@ WEEKLY_MESSAGES = {
 }
 
 
+def get_exchange_rates():
+    response = requests.get(CBU_URL, timeout=20)
+    response.raise_for_status()
+
+    data = response.json()
+
+    result = {}
+    actual_date = None
+
+    for currency in data:
+        code = currency.get("Ccy")
+
+        if code in CURRENCIES:
+            result[code] = currency["Rate"]
+            actual_date = currency.get("Date")
+
+    missing = set(CURRENCIES) - set(result)
+
+    if missing:
+        raise ValueError(
+            f"Не найдены валюты: {', '.join(sorted(missing))}"
+        )
+
+    lines = [
+        "💰 КУРСЫ ВАЛЮТ ЦБ УЗБЕКИСТАНА",
+        f"📅 Дата курса: {actual_date}",
+        "",
+    ]
+
+    for code, name in CURRENCIES.items():
+        lines.append(f"{name}: {result[code]} сум")
+
+    lines.append("")
+    lines.append("Источник: Центральный банк Республики Узбекистан 🇺🇿")
+
+    return "\n".join(lines)
+
+
 def get_message():
     now = datetime.now(TZ)
 
@@ -131,9 +173,7 @@ def get_message():
 
 async def main():
     if not BOT_TOKEN or not GROUP_CHAT_ID:
-        raise ValueError(
-            "Не заданы BOT_TOKEN и GROUP_CHAT_ID."
-        )
+        raise ValueError("Не заданы BOT_TOKEN и GROUP_CHAT_ID.")
 
     now = datetime.now(TZ)
     message = get_message()
@@ -147,9 +187,18 @@ async def main():
     try:
         await bot.initialize()
 
-        # Каждую пятницу отправляем фотографию с поздравлением
-        if MESSAGE_TYPE == "morning" and now.weekday() == 4:
+        if MESSAGE_TYPE == "morning":
+            try:
+                rates = await asyncio.to_thread(get_exchange_rates)
+                message += "\n\n" + rates
+            except Exception as error:
+                print(f"Не удалось получить курсы валют: {error}")
+                message += (
+                    "\n\n💰 Курсы валют временно недоступны. "
+                    "Попробуем получить их позже."
+                )
 
+        if MESSAGE_TYPE == "morning" and now.weekday() == 4:
             if not PHOTO_PATH.exists():
                 raise FileNotFoundError(
                     f"Фото не найдено: {PHOTO_PATH}"
@@ -162,7 +211,7 @@ async def main():
                     caption=message
                 )
 
-            print("Пятничная фотография и поздравление отправлены!")
+            print("Пятничная фотография отправлена!")
 
         else:
             await bot.send_message(
