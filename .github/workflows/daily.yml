@@ -4,7 +4,9 @@ on:
   schedule:
     - cron: "0 4 * * *"
     - cron: "0 5 * * *"
+    - cron: "0 6 * * *"
     - cron: "0 19 * * *"
+
   workflow_dispatch:
     inputs:
       task:
@@ -15,6 +17,7 @@ on:
           - currency
           - morning
           - holiday
+          - news
 
 jobs:
   send-morning-greeting:
@@ -62,6 +65,28 @@ jobs:
           GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
           MESSAGE_TYPE: currency
         run: python daily_greeting.py
+
+  send-news:
+    if: |
+      (github.event_name == 'schedule' && github.event.schedule == '0 6 * * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.task == 'news')
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Send latest news
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
+        run: python news.py
 
   send-holiday-greeting:
     if: |
