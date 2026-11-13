@@ -2,9 +2,7 @@ import requests
 from PIL import Image, ImageDraw, ImageFont
 from datetime import datetime
 from zoneinfo import ZoneInfo
-import os
 
-# Настройки изображения
 WIDTH = 1200
 HEIGHT = 675
 
@@ -16,10 +14,10 @@ GREEN = "#35D49A"
 ACCENT = "#6C8EFF"
 
 CURRENCIES = {
-    "USD": ("🇺🇸", "Доллар США"),
-    "EUR": ("🇪🇺", "Евро"),
-    "RUB": ("🇷🇺", "Российский рубль"),
-    "TRY": ("🇹🇷", "Турецкая лира"),
+    "USD": "Доллар США",
+    "EUR": "Евро",
+    "RUB": "Российский рубль",
+    "TRY": "Турецкая лира",
 }
 
 
@@ -39,7 +37,6 @@ def get_currency_rates():
     response.raise_for_status()
 
     data = response.json()
-
     rates = {}
 
     for item in data:
@@ -47,6 +44,13 @@ def get_currency_rates():
 
         if code in CURRENCIES:
             rates[code] = float(item["Rate"])
+
+    missing = set(CURRENCIES) - set(rates)
+
+    if missing:
+        raise ValueError(
+            f"Не найдены валюты: {', '.join(sorted(missing))}"
+        )
 
     return rates
 
@@ -64,21 +68,21 @@ def create_currency_card():
 
     # Заголовок
     draw.text(
-        (65, 45),
-        "KU ZYA  |  ФИНАНСЫ",
+        (65, 55),
+        "ФИНАНСЫ УЗБЕКИСТАНА",
         font=get_font(23, True),
         fill=ACCENT
     )
 
     draw.text(
-        (65, 100),
+        (65, 110),
         "Курсы валют",
         font=get_font(55, True),
         fill=WHITE
     )
 
     draw.text(
-        (68, 175),
+        (68, 185),
         "Официальные курсы Центрального банка Узбекистана",
         font=get_font(20),
         fill=GRAY
@@ -90,21 +94,20 @@ def create_currency_card():
     ).strftime("%d.%m.%Y")
 
     draw.text(
-        (950, 65),
+        (950, 75),
         today,
         font=get_font(22, True),
         fill=GRAY
     )
 
-    # Карточки валют
     positions = [
-        (65, 250),
-        (625, 250),
-        (65, 430),
-        (625, 430)
+        (65, 260),
+        (625, 260),
+        (65, 440),
+        (625, 440)
     ]
 
-    for (code, (flag, name)), position in zip(
+    for (code, name), position in zip(
         CURRENCIES.items(),
         positions
     ):
@@ -124,36 +127,33 @@ def create_currency_card():
         )
 
         draw.text(
-            (x + 28, y + 72),
+            (x + 28, y + 75),
             name,
             font=get_font(19),
             fill=GRAY
         )
 
-        rate = rates.get(code)
+        rate_text = f"{rates[code]:,.2f}".replace(",", " ")
 
-        if rate is not None:
-            rate_text = f"{rate:,.2f}".replace(",", " ")
+        draw.text(
+            (x + 275, y + 43),
+            rate_text,
+            font=get_font(35, True),
+            fill=GREEN
+        )
 
-            draw.text(
-                (x + 275, y + 43),
-                rate_text,
-                font=get_font(35, True),
-                fill=GREEN
-            )
-
-            draw.text(
-                (x + 400, y + 95),
-                "UZS",
-                font=get_font(17, True),
-                fill=GRAY
-            )
+        draw.text(
+            (x + 400, y + 95),
+            "UZS",
+            font=get_font(17, True),
+            fill=GRAY
+        )
 
     # Нижняя подпись
     draw.text(
         (65, 625),
-        "KU ZYA • Ваш семейный помощник",
-        font=get_font(18),
+        "Источник: Центральный банк Республики Узбекистан",
+        font=get_font(17),
         fill=GRAY
     )
 
