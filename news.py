@@ -1,5 +1,4 @@
 import os
-import re
 import json
 import hashlib
 import requests
@@ -7,8 +6,7 @@ import feedparser
 
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
-from html import escape, unescape
-from urllib.parse import urlparse, urljoin
+from html import escape
 
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -22,36 +20,27 @@ MAX_NEWS = 7
 NEWS_AGE_HOURS = 24
 HISTORY_DAYS = 60
 
-REQUEST_TIMEOUT = 25
-
-HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 Chrome/120.0 Safari/537.36"
-    )
-}
-
 # Только узбекские СМИ
 
 SOURCES = [
     {
-        "name": "Kun.uz",
+        "name": "🇺🇿 Kun.uz",
         "query": "site:kun.uz",
     },
     {
-        "name": "Gazeta.uz",
+        "name": "🇺🇿 Gazeta.uz",
         "query": "site:gazeta.uz",
     },
     {
-        "name": "Daryo.uz",
+        "name": "🇺🇿 Daryo.uz",
         "query": "site:daryo.uz",
     },
     {
-        "name": "Spot.uz",
+        "name": "🇺🇿 Spot.uz",
         "query": "site:spot.uz",
     },
     {
-        "name": "UzA",
+        "name": "🇺🇿 UzA",
         "query": "site:uza.uz",
     },
 ]
@@ -66,7 +55,7 @@ def load_history():
             return json.load(file)
 
     except (json.JSONDecodeError, OSError):
-        print("История новостей не найдена.")
+        print("История новостей не найдена. Создаём новую.")
         return {}
 
 
@@ -96,49 +85,6 @@ def save_history(history):
         )
 
 
-def clean_html(text):
-    if not text:
-        return ""
-
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = unescape(text)
-    text = re.sub(r"\s+", " ", text)
-
-    return text.strip()
-
-
-def get_entry_date(entry):
-    published = entry.get("published")
-
-    if not published:
-        published = entry.get("updated")
-
-    if not published:
-        return None
-
-    try:
-        date = parsedate_to_datetime(published)
-
-        if date.tzinfo is None:
-            date = date.replace(tzinfo=timezone.utc)
-
-        return date.astimezone(timezone.utc)
-
-    except (TypeError, ValueError):
-        try:
-            date = datetime.fromisoformat(
-                published.replace("Z", "+00:00")
-            )
-
-            if date.tzinfo is None:
-                date = date.replace(tzinfo=timezone.utc)
-
-            return date.astimezone(timezone.utc)
-
-        except (ValueError, TypeError):
-            return None
-
-
 def get_news():
     all_news = []
     seen_titles = set()
@@ -158,8 +104,10 @@ def get_news():
             response = requests.get(
                 GOOGLE_NEWS_URL,
                 params=params,
-                headers=HEADERS,
-                timeout=REQUEST_TIMEOUT,
+                timeout=20,
+                headers={
+                    "User-Agent": "Mozilla/5.0"
+                },
             )
 
             response.raise_for_status()
@@ -170,13 +118,22 @@ def get_news():
 
                 title = entry.get("title", "").strip()
                 link = entry.get("link", "").strip()
+                published = entry.get("published")
 
-                if not title or not link:
+                if not title or not link or not published:
                     continue
 
-                published_date = get_entry_date(entry)
+                try:
+                    published_date = parsedate_to_datetime(
+                        published
+                    )
 
-                if not published_date:
+                    if published_date.tzinfo is None:
+                        published_date = published_date.replace(
+                            tzinfo=timezone.utc
+                        )
+
+                except (TypeError, ValueError):
                     continue
 
                 if now - published_date > timedelta(
@@ -196,10 +153,6 @@ def get_news():
 
                 seen_titles.add(normalized_title)
 
-                description = clean_html(
-                    entry.get("summary", "")
-                )
-
                 news_id = hashlib.sha256(
                     normalized_title.encode("utf-8")
                 ).hexdigest()
@@ -207,12 +160,9 @@ def get_news():
                 all_news.append({
                     "id": news_id,
                     "title": title,
-                    "description": description,
                     "link": link,
                     "source": source["name"],
                     "date": published_date,
-                    "image": None,
-                    "video": None,
                 })
 
         except requests.RequestException as error:
@@ -229,94 +179,21 @@ def get_news():
     return all_news
 
 
-def get_article_media(url):
-    """
-    Пытается получить фотографию и прямое видео
-    из метаданных оригинальной публикации.
-    """
-
-    image_url = None
-    video_url = None
-
-    try:
-        response = requests.get(
-            url,
-            headers=HEADERS,
-            timeout=REQUEST_TIMEOUT,
-            allow_redirects=True,
-        )
-
-        response.raise_for_status()
-
-        page = response.text
-
-        # Open Graph image
-
-        image_patterns = [
-            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
-            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
-            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
-        ]
-
-        for pattern in image_patterns:
-
-            match = re.search(
-                pattern,
-                page,
-                re.IGNORECASE,
-            )
-
-            if match:
-                image_url = urljoin(
-                    response.url,
-                    unescape(match.group(1)),
-                )
-                break
-
-        # Прямые видеофайлы MP4
-
-        video_patterns = [
-            r'<meta[^>]+property=["\']og:video:url["\'][^>]+content=["\']([^"\']+)',
-            r'<meta[^>]+property=["\']og:video["\'][^>]+content=["\']([^"\']+)',
-            r'<meta[^>]+content=["\']([^"\']+\.mp4[^"\']*)["\']',
-        ]
-
-        for pattern in video_patterns:
-
-            match = re.search(
-                pattern,
-                page,
-                re.IGNORECASE,
-            )
-
-            if match:
-
-                candidate = urljoin(
-                    response.url,
-                    unescape(match.group(1)),
-                )
-
-                if candidate.lower().split("?")[0].endswith(".mp4"):
-                    video_url = candidate
-                    break
-
-    except requests.RequestException as error:
-        print(f"Не удалось получить медиа: {error}")
-
-    return image_url, video_url
-
-
-def telegram_request(method, data=None, files=None):
+def send_telegram_message(message):
     url = (
         f"https://api.telegram.org/"
-        f"bot{BOT_TOKEN}/{method}"
+        f"bot{BOT_TOKEN}/sendMessage"
     )
 
     response = requests.post(
         url,
-        data=data,
-        files=files,
-        timeout=60,
+        data={
+            "chat_id": GROUP_CHAT_ID,
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": True,
+        },
+        timeout=30,
     )
 
     response.raise_for_status()
@@ -328,171 +205,6 @@ def telegram_request(method, data=None, files=None):
             f"Ошибка Telegram: {result}"
         )
 
-    return result
-
-
-def send_text(message):
-    telegram_request(
-        "sendMessage",
-        data={
-            "chat_id": GROUP_CHAT_ID,
-            "text": message,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        },
-    )
-
-
-def send_photo(image_url, caption):
-    response = requests.get(
-        image_url,
-        headers=HEADERS,
-        timeout=REQUEST_TIMEOUT,
-    )
-
-    response.raise_for_status()
-
-    content_type = response.headers.get(
-        "Content-Type", ""
-    )
-
-    if not content_type.startswith("image/"):
-        raise RuntimeError(
-            "Ссылка не вернула изображение."
-        )
-
-    telegram_request(
-        "sendPhoto",
-        data={
-            "chat_id": GROUP_CHAT_ID,
-            "caption": caption,
-            "parse_mode": "HTML",
-        },
-        files={
-            "photo": (
-                "news.jpg",
-                response.content,
-            )
-        },
-    )
-
-
-def send_video(video_url, caption):
-    response = requests.get(
-        video_url,
-        headers=HEADERS,
-        timeout=60,
-        stream=True,
-    )
-
-    response.raise_for_status()
-
-    content = response.content
-
-    telegram_request(
-        "sendVideo",
-        data={
-            "chat_id": GROUP_CHAT_ID,
-            "caption": caption,
-            "parse_mode": "HTML",
-        },
-        files={
-            "video": (
-                "news.mp4",
-                content,
-                "video/mp4",
-            )
-        },
-    )
-
-
-def format_news(item, index):
-    title = escape(item["title"])
-
-    description = item["description"]
-
-    if description:
-        description = escape(description[:700])
-    else:
-        description = (
-            "Подробности доступны в оригинальной публикации."
-        )
-
-    source = escape(item["source"])
-
-    date = item["date"].astimezone(
-        timezone(timedelta(hours=5))
-    ).strftime("%d.%m.%Y, %H:%M")
-
-    link = escape(
-        item["link"],
-        quote=True,
-    )
-
-    return (
-        f"🇺🇿 <b>{index}. {title}</b>\n\n"
-        f"{description}\n\n"
-        f"📰 Источник: {source}\n"
-        f"🕒 {date}\n"
-        f'<a href="{link}">Читать полностью</a>'
-    )
-
-
-def send_news_item(item, index):
-    caption = format_news(item, index)
-
-    image_url, video_url = get_article_media(
-        item["link"]
-    )
-
-    # Если доступно видео — отправляем видео
-
-    if video_url:
-        try:
-            send_video(
-                video_url,
-                caption,
-            )
-
-            print(
-                f"Видео отправлено: {item['title']}"
-            )
-
-            return
-
-        except Exception as error:
-            print(
-                f"Не удалось отправить видео: {error}"
-            )
-
-    # Если видео нет — пробуем фотографию
-
-    if image_url:
-        try:
-            send_photo(
-                image_url,
-                caption,
-            )
-
-            print(
-                f"Фото отправлено: {item['title']}"
-            )
-
-            return
-
-        except Exception as error:
-            print(
-                f"Не удалось отправить фото: {error}"
-            )
-
-    # Если медиа нет — отправляем текст
-
-    send_text(caption)
-
-    print(
-        f"Текстовая новость отправлена: {item['title']}"
-    )
-
 
 def main():
 
@@ -501,15 +213,12 @@ def main():
             "Не найдены BOT_TOKEN или GROUP_CHAT_ID"
         )
 
-    print("Получаем новости Узбекистана...")
-
     history = load_history()
 
     all_news = get_news()
 
     new_news = [
-        item
-        for item in all_news
+        item for item in all_news
         if item["id"] not in history
     ]
 
@@ -519,45 +228,76 @@ def main():
 
         print("Новых новостей нет.")
 
-        send_text(
-            "🇺🇿 <b>Новости Узбекистана</b>\n\n"
+        send_telegram_message(
+            "🇺🇿 <b>НОВОСТИ УЗБЕКИСТАНА</b>\n\n"
             "За последние 24 часа новых публикаций "
-            "для нашей новостной ленты не найдено."
+            "не найдено."
         )
 
         save_history(history)
-
         return
 
-    send_text(
+    message = (
         "🇺🇿 <b>ГЛАВНЫЕ НОВОСТИ УЗБЕКИСТАНА</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "Самые свежие события страны"
+        "━━━━━━━━━━━━━━━━━━\n\n"
     )
-
-    now = datetime.now(timezone.utc).isoformat()
 
     for index, item in enumerate(new_news, start=1):
 
-        try:
-            send_news_item(
-                item,
-                index,
+        title = escape(item["title"])
+        source = escape(item["source"])
+        link = escape(item["link"], quote=True)
+
+        message += (
+            f"<b>{index}. {title}</b>\n"
+            f"{source}\n"
+            f'<a href="{link}">📖 Читать подробнее</a>\n\n'
+        )
+
+    message += (
+        "━━━━━━━━━━━━━━━━━━\n"
+        "📰 Свежие новости за последние 24 часа."
+    )
+
+    # Telegram ограничивает сообщение 4096 символами.
+    if len(message) > 4000:
+        print("Сообщение слишком длинное. Уменьшаем количество новостей.")
+
+        while len(message) > 4000 and len(new_news) > 1:
+            new_news.pop()
+
+            message = (
+                "🇺🇿 <b>ГЛАВНЫЕ НОВОСТИ УЗБЕКИСТАНА</b>\n"
+                "━━━━━━━━━━━━━━━━━━\n\n"
             )
 
-            history[item["id"]] = now
+            for index, item in enumerate(new_news, start=1):
+                title = escape(item["title"])
+                source = escape(item["source"])
+                link = escape(item["link"], quote=True)
 
-        except Exception as error:
+                message += (
+                    f"<b>{index}. {title}</b>\n"
+                    f"{source}\n"
+                    f'<a href="{link}">📖 Читать подробнее</a>\n\n'
+                )
 
-            print(
-                f"Ошибка отправки новости "
-                f"{item['title']}: {error}"
+            message += (
+                "━━━━━━━━━━━━━━━━━━\n"
+                "📰 Свежие новости за последние 24 часа."
             )
+
+    send_telegram_message(message)
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    for item in new_news:
+        history[item["id"]] = now
 
     save_history(history)
 
     print(
-        f"Обработано новостей: {len(new_news)}"
+        f"Успешно отправлено новостей: {len(new_news)}"
     )
 
 
