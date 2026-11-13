@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 import requests
 from telegram import Bot
 
+from currency_card import create_currency_card
+
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "").strip()
 MESSAGE_TYPE = os.getenv("MESSAGE_TYPE", "morning").strip().lower()
@@ -185,16 +187,25 @@ async def main():
     try:
         await bot.initialize()
 
-        # Отдельная отправка курсов валют
+        # Визуальная карточка курсов валют
         if MESSAGE_TYPE == "currency":
+            # Получаем актуальные курсы
             rates = await asyncio.to_thread(get_exchange_rates)
 
-            await bot.send_message(
-                chat_id=GROUP_CHAT_ID,
-                text=rates
+            # Создаём изображение
+            image_path = await asyncio.to_thread(
+                create_currency_card
             )
 
-            print("Курсы валют успешно отправлены!")
+            # Отправляем изображение с подписью
+            with open(image_path, "rb") as photo:
+                await bot.send_photo(
+                    chat_id=GROUP_CHAT_ID,
+                    photo=photo,
+                    caption=rates
+                )
+
+            print("Карточка курсов валют успешно отправлена!")
             return
 
         message = get_message()
