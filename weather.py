@@ -2,6 +2,9 @@ import os
 import math
 import random
 import time
+import subprocess
+import tempfile
+from pathlib import Path
 import requests
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -9,7 +12,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 # ============================================================
 # TASHKENT WEATHER — premium animated Telegram card
-# Canvas: 1080x1350. Data: Open-Meteo. Output: animated GIF.
+# Canvas: 1080x1350. Data: Open-Meteo. Output: high-quality animated MP4.
 # ============================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -21,7 +24,7 @@ LONGITUDE = 69.2401
 WIDTH, HEIGHT = 1080, 1350
 FRAME_COUNT = 24
 FRAME_DURATION_MS = 100
-OUTPUT_FILE = "weather_animation.gif"
+OUTPUT_FILE = "weather_animation.mp4"
 API_URL = "https://api.open-meteo.com/v1/forecast"
 
 WEATHER_NAMES = {
@@ -385,11 +388,15 @@ def draw_card(weather):
     return image
 
 def animate_weather(base, weather):
+    """Render full-colour PNG frames and encode them as high-quality H.264 MP4.
+
+    GIF is limited to 256 colours, which caused gradients, text and glass panels
+    to look rough. MP4 preserves the full colour range and is supported by
+    Telegram's sendAnimation endpoint when encoded as silent H.264 video.
+    """
     effect = weather_effect(weather["code"])
-    frames = []
     random.seed(2026)
 
-    # Fixed particle paths keep the animation smooth and looping.
     rain_particles = [
         (random.randint(0, WIDTH), random.randint(0, HEIGHT),
          random.randint(22, 42), random.randint(18, 34))
@@ -401,54 +408,60 @@ def animate_weather(base, weather):
         for _ in range(170 if effect == "snow" else 1)
     ]
 
-    for frame_no in range(FRAME_COUNT):
-        frame = base.copy()
-        overlay = Image.new("RGBA", frame.size, (0, 0, 0, 0))
-        d = ImageDraw.Draw(overlay, "RGBA")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        frame_pattern = os.path.join(temp_dir, "frame_%03d.png")
 
-        if effect in ("rain", "storm"):
-            count = len(rain_particles)
-            for x, y0, length, speed in rain_particles:
-                y = (y0 + frame_no*speed) % (HEIGHT + 80) - 40
-                x2 = x - int(length*0.28)
-                d.line((x, y, x2, y+length),
-                       fill=(190, 222, 255, 125), width=3)
-            if effect == "storm" and frame_no in (2, 3, 14):
-                d.rectangle((0, 0, WIDTH, HEIGHT), fill=(255, 255, 255, 35))
+        for frame_no in range(FRAME_COUNT):
+            frame = base.copy()
+            overlay = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+            d = ImageDraw.Draw(overlay, "RGBA")
 
-        elif effect == "snow":
-            for x, y0, speed, radius, phase in snow_particles:
-                y = (y0 + frame_no*speed) % HEIGHT
-                drift = int(math.sin(phase + frame_no*0.22)*24)
-                d.ellipse((x+drift-radius, y-radius, x+drift+radius, y+radius),
-                          fill=(255, 255, 255, 220))
+            if effect in ("rain", "storm"):
+                for x, y0, length, speed in rain_particles:
+                    y = (y0 + frame_no*speed) % (HEIGHT + 80) - 40
+                    x2 = x - int(length*0.28)
+                    d.line((x, y, x2, y+length),
+                           fill=(190, 222, 255, 145), width=3)
+                if effect == "storm" and frame_no in (2, 3, 14):
+                    d.rectangle((0, 0, WIDTH, HEIGHT), fill=(255, 255, 255, 35))
 
-        elif effect == "cloud":
-            # Fine, translucent cloud wisps drift across the whole sky.
-            for i in range(8):
-                x = ((i*190 + frame_no*8) % (WIDTH+240)) - 120
-                y = 180 + (i % 3)*95
-                d.ellipse((x, y, x+210, y+48), fill=(224, 236, 250, 24))
+            elif effect == "snow":
+                for x, y0, speed, radius, phase in snow_particles:
+                    y = (y0 + frame_no*speed) % HEIGHT
+                    drift = int(math.sin(phase + frame_no*0.22)*24)
+                    d.ellipse((x+drift-radius, y-radius, x+drift+radius, y+radius),
+                              fill=(255, 255, 255, 235))
 
-        elif effect == "sun":
-            pulse = int(8 + 7*math.sin(frame_no*math.pi/12))
-            d.ellipse((730-pulse, 150-pulse, 930+pulse, 350+pulse),
-                      fill=(255, 205, 105, 13))
+            elif effect == "cloud":
+                for i in range(8):
+                    x = ((i*190 + frame_no*8) % (WIDTH+240)) - 120
+                    y = 180 + (i % 3)*95
+                    d.ellipse((x, y, x+210, y+48), fill=(224, 236, 250, 30))
 
-        frame.alpha_composite(overlay)
-        frames.append(frame.convert("RGB").quantize(
-            colors=256, method=Image.Quantize.MEDIANCUT
-        ))
+            elif effect == "sun":
+                pulse = int(8 + 7*math.sin(frame_no*math.pi/12))
+                d.ellipse((730-pulse, 150-pulse, 930+pulse, 350+pulse),
+                          fill=(255, 205, 105, 18))
 
-    frames[0].save(
-        OUTPUT_FILE,
-        save_all=True,
-        append_images=frames[1:],
-        duration=FRAME_DURATION_MS,
-        loop=0,
-        optimize=True,
-        disposal=2
-    )
+            frame.alpha_composite(overlay)
+            frame.convert("RGB").save(frame_pattern % frame_no, format="PNG", optimize=False)
+
+        command = [
+            "ffmpeg", "-y", "-loglevel", "error",
+            "-framerate", "10",
+            "-i", frame_pattern,
+            "-an", "-c:v", "libx264", "-preset", "slow",
+            "-crf", "16", "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            OUTPUT_FILE
+        ]
+        try:
+            subprocess.run(command, check=True, timeout=180)
+        except FileNotFoundError as exc:
+            raise RuntimeError("На GitHub Runner не найден ffmpeg. Добавь установку ffmpeg в workflow.") from exc
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(f"Не удалось собрать MP4 через ffmpeg: {exc}") from exc
+
     return OUTPUT_FILE
 
 def send_animation(path):
@@ -459,7 +472,7 @@ def send_animation(path):
         response = requests.post(
             url,
             data={"chat_id": GROUP_CHAT_ID},
-            files={"animation": ("weather.gif", animation, "image/gif")},
+            files={"animation": ("weather.mp4", animation, "video/mp4")},
             timeout=120
         )
     response.raise_for_status()
@@ -473,10 +486,10 @@ def main():
     weather = get_weather()
     print("Рисуем карточку...")
     base = draw_card(weather)
-    print("Создаём GIF...")
-    gif_path = animate_weather(base, weather)
-    print("Отправляем GIF в Telegram...")
-    send_animation(gif_path)
+    print("Создаём высококачественную MP4-анимацию...")
+    animation_path = animate_weather(base, weather)
+    print("Отправляем анимацию в Telegram...")
+    send_animation(animation_path)
 
 if __name__ == "__main__":
     main()
