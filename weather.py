@@ -1,6 +1,7 @@
 import os
 import math
 import random
+import time
 import requests
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -63,9 +64,33 @@ def get_weather():
         "timezone": "Asia/Tashkent",
         "forecast_days": 2
     }
-    response = requests.get(API_URL, params=params, timeout=30)
-    response.raise_for_status()
-    data = response.json()
+    # Open-Meteo can respond slowly from GitHub Actions runners.
+    # Retry transient network timeouts instead of failing the whole workflow.
+    last_error = None
+    data = None
+    for attempt in range(1, 4):
+        try:
+            print(f"Запрос прогноза Open-Meteo: попытка {attempt}/3...")
+            response = requests.get(
+                API_URL,
+                params=params,
+                timeout=(20, 90)  # connect timeout, read timeout
+            )
+            response.raise_for_status()
+            data = response.json()
+            break
+        except requests.RequestException as error:
+            last_error = error
+            print(f"Open-Meteo не ответил: {error}")
+            if attempt < 3:
+                wait_seconds = attempt * 10
+                print(f"Повторяем через {wait_seconds} секунд...")
+                time.sleep(wait_seconds)
+
+    if data is None:
+        raise RuntimeError(
+            f"Не удалось получить прогноз Open-Meteo после 3 попыток: {last_error}"
+        )
 
     daily = data["daily"]
     day_index = daily["time"].index(tomorrow.isoformat())
