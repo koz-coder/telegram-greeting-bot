@@ -2,753 +2,456 @@ import os
 import math
 import random
 import requests
-
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
-
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-
-# ==================================================
-# НАСТРОЙКИ
-# ==================================================
+# ============================================================
+# TASHKENT WEATHER — premium animated Telegram card
+# Canvas: 1080x1350. Data: Open-Meteo. Output: animated GIF.
+# ============================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID")
+TZ = ZoneInfo("Asia/Tashkent")
 
-TIMEZONE = ZoneInfo("Asia/Tashkent")
-
-LAT = 41.2995
-LON = 69.2401
-
-W = 1080
-H = 1350
-
-SCALE = 2
-FRAMES = 24
-DURATION = 100
-
+LATITUDE = 41.2995
+LONGITUDE = 69.2401
+WIDTH, HEIGHT = 1080, 1350
+FRAME_COUNT = 24
+FRAME_DURATION_MS = 100
 OUTPUT_FILE = "weather_animation.gif"
-
 API_URL = "https://api.open-meteo.com/v1/forecast"
 
-
-WEATHER_CODES = {
-    0: "Ясно",
-    1: "Преимущественно ясно",
-    2: "Переменная облачность",
-    3: "Облачно",
-    45: "Туман",
-    48: "Туман",
-    51: "Небольшая морось",
-    53: "Морось",
-    55: "Сильная морось",
-    56: "Ледяная морось",
-    57: "Ледяная морось",
-    61: "Небольшой дождь",
-    63: "Дождь",
-    65: "Сильный дождь",
-    66: "Ледяной дождь",
-    67: "Ледяной дождь",
-    71: "Небольшой снег",
-    73: "Снег",
-    75: "Сильный снег",
-    77: "Снежная крупа",
-    80: "Ливень",
-    81: "Сильный ливень",
-    82: "Очень сильный ливень",
-    85: "Снегопад",
-    86: "Сильный снегопад",
-    95: "Гроза",
-    96: "Гроза с градом",
-    99: "Сильная гроза"
+WEATHER_NAMES = {
+    0: "Ясно", 1: "Преимущественно ясно",
+    2: "Переменная облачность", 3: "Облачно",
+    45: "Туман", 48: "Изморозевый туман",
+    51: "Небольшая морось", 53: "Морось", 55: "Сильная морось",
+    56: "Ледяная морось", 57: "Сильная ледяная морось",
+    61: "Небольшой дождь", 63: "Дождь", 65: "Сильный дождь",
+    66: "Ледяной дождь", 67: "Сильный ледяной дождь",
+    71: "Небольшой снег", 73: "Снег", 75: "Сильный снег",
+    77: "Снежная крупа", 80: "Ливень", 81: "Сильный ливень",
+    82: "Очень сильный ливень", 85: "Снегопад", 86: "Сильный снегопад",
+    95: "Гроза", 96: "Гроза с градом", 99: "Сильная гроза"
 }
 
-
-# ==================================================
-# ШРИФТЫ
-# ==================================================
-
-def font(size, bold=False):
+def load_font(size, bold=False):
     paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-        if bold else
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-
-        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf"
-        if bold else
-        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf"
     ]
-
     for path in paths:
         if os.path.exists(path):
             return ImageFont.truetype(path, size)
-
     return ImageFont.load_default()
 
-
-# ==================================================
-# ПОЛУЧЕНИЕ ПРОГНОЗА
-# ==================================================
-
 def get_weather():
-
-    tomorrow = datetime.now(TIMEZONE).date() + timedelta(days=1)
-
+    tomorrow = datetime.now(TZ).date() + timedelta(days=1)
     params = {
-        "latitude": LAT,
-        "longitude": LON,
-        "current": (
-            "temperature_2m,apparent_temperature,"
-            "relative_humidity_2m,weather_code,"
-            "wind_speed_10m"
-        ),
-        "hourly": (
-            "temperature_2m,weather_code"
-        ),
-        "daily": (
-            "weather_code,temperature_2m_max,"
-            "temperature_2m_min,precipitation_probability_max,"
-            "precipitation_sum,wind_speed_10m_max,"
-            "sunrise,sunset"
-        ),
+        "latitude": LATITUDE,
+        "longitude": LONGITUDE,
+        "current": "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m",
+        "hourly": "temperature_2m,weather_code",
+        "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,wind_speed_10m_max,sunrise,sunset",
         "timezone": "Asia/Tashkent",
         "forecast_days": 2
     }
-
-    response = requests.get(
-        API_URL,
-        params=params,
-        timeout=30
-    )
-
+    response = requests.get(API_URL, params=params, timeout=30)
     response.raise_for_status()
-
     data = response.json()
 
     daily = data["daily"]
-
-    index = daily["time"].index(tomorrow.isoformat())
-
+    day_index = daily["time"].index(tomorrow.isoformat())
     hourly = data["hourly"]
 
     hours = []
-
-    for hour in [9, 12, 15, 18]:
-
-        target = f"{tomorrow.isoformat()}T{hour:02d}:00"
-
+    for hour in (9, 12, 15, 18):
+        stamp = f"{tomorrow.isoformat()}T{hour:02d}:00"
         try:
-            i = hourly["time"].index(target)
+            i = hourly["time"].index(stamp)
             temp = hourly["temperature_2m"][i]
             code = hourly["weather_code"][i]
         except (ValueError, IndexError):
-            temp = None
-            code = None
-
-        hours.append({
-            "hour": hour,
-            "temp": temp,
-            "code": code
-        })
+            temp, code = None, None
+        hours.append({"hour": hour, "temp": temp, "code": code})
 
     current = data["current"]
-
     return {
         "date": tomorrow,
         "current_temp": current["temperature_2m"],
         "feels_like": current["apparent_temperature"],
         "humidity": current["relative_humidity_2m"],
+        "current_code": current["weather_code"],
         "wind": current["wind_speed_10m"],
-        "max": daily["temperature_2m_max"][index],
-        "min": daily["temperature_2m_min"][index],
-        "code": daily["weather_code"][index],
-        "rain": daily["precipitation_probability_max"][index] or 0,
-        "precipitation": daily["precipitation_sum"][index] or 0,
-        "max_wind": daily["wind_speed_10m_max"][index],
-        "sunrise": daily["sunrise"][index][-5:],
-        "sunset": daily["sunset"][index][-5:],
+        "max": daily["temperature_2m_max"][day_index],
+        "min": daily["temperature_2m_min"][day_index],
+        "code": daily["weather_code"][day_index],
+        "rain": daily["precipitation_probability_max"][day_index] or 0,
+        "precipitation": daily["precipitation_sum"][day_index] or 0,
+        "max_wind": daily["wind_speed_10m_max"][day_index],
+        "sunrise": daily["sunrise"][day_index][-5:],
+        "sunset": daily["sunset"][day_index][-5:],
         "hours": hours
     }
 
-
-# ==================================================
-# ОПРЕДЕЛЕНИЕ ТИПА ПОГОДЫ
-# ==================================================
-
-def get_effect(code):
-
-    if code in [95, 96, 99]:
+def weather_effect(code):
+    if code in (95, 96, 99):
         return "storm"
-
-    if code in [71, 73, 75, 77, 85, 86]:
+    if code in (71, 73, 75, 77, 85, 86):
         return "snow"
-
-    if code in [
-        51, 53, 55, 56, 57,
-        61, 63, 65, 66, 67,
-        80, 81, 82
-    ]:
+    if code in (51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82):
         return "rain"
-
-    if code in [2, 3, 45, 48]:
+    if code in (2, 3, 45, 48):
         return "cloud"
-
     return "sun"
 
-
-# ==================================================
-# ФОН
-# ==================================================
-
-def create_background():
-
-    image = Image.new("RGB", (W, H))
-    pixels = image.load()
-
-    for y in range(H):
-
-        t = y / H
-
-        r = int(12 + t * 25)
-        g = int(24 + t * 25)
-        b = int(67 + t * 48)
-
-        for x in range(W):
-            pixels[x, y] = (r, g, b)
-
+def gradient_background(effect):
+    palettes = {
+        "sun": ((25, 67, 119), (31, 48, 91)),
+        "cloud": ((44, 77, 119), (25, 47, 91)),
+        "rain": ((17, 43, 79), (13, 31, 69)),
+        "storm": ((12, 28, 58), (9, 20, 49)),
+        "snow": ((70, 101, 142), (29, 53, 94))
+    }
+    top, bottom = palettes[effect]
+    image = Image.new("RGB", (WIDTH, HEIGHT))
+    pix = image.load()
+    for y in range(HEIGHT):
+        t = y / (HEIGHT - 1)
+        row = tuple(round(top[c] * (1 - t) + bottom[c] * t) for c in range(3))
+        for x in range(WIDTH):
+            pix[x, y] = row
     return image.convert("RGBA")
 
-
-# ==================================================
-# СТЕКЛЯННЫЕ БЛОКИ
-# ==================================================
-
-def glass_card(draw, box, radius=30):
-
-    draw.rounded_rectangle(
-        box,
-        radius=radius,
-        fill=(255, 255, 255, 25),
-        outline=(255, 255, 255, 55),
-        width=2
-    )
-
-
-# ==================================================
-# ИКОНКИ ПОГОДЫ
-# ==================================================
-
-def draw_sun(draw, x, y, radius):
-
-    draw.ellipse(
-        (
-            x-radius-18,
-            y-radius-18,
-            x+radius+18,
-            y+radius+18
-        ),
-        fill=(255, 205, 105, 35)
-    )
-
-    draw.ellipse(
-        (
-            x-radius,
-            y-radius,
-            x+radius,
-            y+radius
-        ),
-        fill=(255, 211, 112, 255)
-    )
-
-    for angle in range(0, 360, 45):
-
-        rad = math.radians(angle)
-
-        x1 = x + math.cos(rad) * (radius + 20)
-        y1 = y + math.sin(rad) * (radius + 20)
-
-        x2 = x + math.cos(rad) * (radius + 42)
-        y2 = y + math.sin(rad) * (radius + 42)
-
-        draw.line(
-            (x1, y1, x2, y2),
-            fill=(255, 220, 150, 230),
-            width=7
-        )
-
-
-def draw_cloud(draw, x, y, scale=1):
-
-    color = (220, 231, 247, 220)
-
-    draw.ellipse(
-        (x, y+35*scale, x+150*scale, y+115*scale),
-        fill=color
-    )
-
-    draw.ellipse(
-        (x+45*scale, y, x+135*scale, y+100*scale),
-        fill=color
-    )
-
-    draw.ellipse(
-        (x+95*scale, y+25*scale, x+190*scale, y+110*scale),
-        fill=color
-    )
-
-
-# ==================================================
-# ОСНОВНОЙ ДИЗАЙН
-# ==================================================
-
-def create_card(weather):
-
-    image = create_background()
-
-    draw = ImageDraw.Draw(image, "RGBA")
-
-    title = font(42, True)
-    big = font(150)
-    medium = font(38, True)
-    normal = font(29)
-    small = font(24)
-
-    effect = get_effect(weather["code"])
-
-    # Заголовок
-
-    draw.text(
-        (65, 55),
-        "ПОГОДА В ТАШКЕНТЕ",
-        font=title,
-        fill="white"
-    )
-
-    draw.text(
-        (68, 115),
-        f"Прогноз на {weather['date'].strftime('%d.%m.%Y')}",
-        font=small,
-        fill=(190, 207, 235)
-    )
-
-    # Главная погодная иконка
-
+def add_atmosphere(image, effect):
+    # Soft atmospheric glow behind the skyline.
+    glow = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
     if effect == "sun":
-        draw_sun(draw, 820, 310, 65)
-
-    elif effect == "cloud":
-        draw_cloud(draw, 740, 230, 1.3)
-
-    elif effect in ["rain", "storm"]:
-        draw_cloud(draw, 740, 230, 1.3)
-
+        gd.ellipse((460, 80, 1160, 760), fill=(255, 163, 91, 100))
     elif effect == "snow":
-        draw_cloud(draw, 740, 230, 1.3)
+        gd.ellipse((360, 100, 1100, 760), fill=(188, 215, 245, 65))
+    else:
+        gd.ellipse((480, 100, 1160, 760), fill=(113, 159, 213, 58))
+    image.alpha_composite(glow.filter(ImageFilter.GaussianBlur(125)))
 
-    # Температура
+    # Soft cloud banks.
+    cloud_layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    cd = ImageDraw.Draw(cloud_layer)
+    random.seed(31)
+    for band in range(3):
+        y0 = 280 + band * 90
+        for i in range(8):
+            x = i * 160 - 80 + random.randint(-35, 35)
+            y = y0 + random.randint(-25, 25)
+            alpha = 24 + band * 9
+            color = (178, 202, 232, alpha)
+            cd.ellipse((x, y, x + 230, y + 82), fill=color)
+            cd.ellipse((x + 40, y - 42, x + 165, y + 95), fill=color)
+    image.alpha_composite(cloud_layer.filter(ImageFilter.GaussianBlur(32)))
 
-    draw.text(
-        (65, 205),
-        f"{weather['current_temp']:.0f}°",
-        font=big,
-        fill="white"
-    )
+def add_tashkent_skyline(image):
+    layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    random.seed(10)
 
-    draw.text(
-        (75, 390),
-        "Сейчас в Ташкенте",
-        font=normal,
-        fill=(210, 222, 242)
-    )
+    # Distant buildings and warm windows.
+    for x in range(-15, WIDTH + 25, 43):
+        bw = random.randint(25, 43)
+        bh = random.randint(38, 102)
+        y = 575 - bh
+        d.rectangle((x, y, x + bw, 590), fill=(9, 25, 48, 190))
+        for wy in range(y + 12, 580, 18):
+            for wx in range(x + 7, x + bw - 4, 12):
+                d.rectangle((wx, wy, wx + 4, wy + 6), fill=(255, 205, 126, 95))
 
-    draw.text(
-        (75, 445),
-        f"Ощущается как {weather['feels_like']:.0f}°",
-        font=small,
-        fill=(190, 207, 235)
-    )
+    # Tree silhouettes along the horizon.
+    for x in range(-20, WIDTH + 30, 31):
+        crown_y = random.randint(525, 575)
+        d.line((x + 12, 600, x + 12, crown_y + 20), fill=(12, 38, 39, 240), width=8)
+        d.ellipse((x - 10, crown_y - 12, x + 34, crown_y + 38), fill=(13, 48, 43, 240))
 
-    # Прогноз на завтра
+    # Stylized Tashkent TV tower on the right.
+    tx = 925
+    d.line((tx, 565, tx, 75), fill=(16, 30, 51, 255), width=9)
+    d.polygon([(tx - 25, 565), (tx + 25, 565), (tx + 10, 270), (tx - 10, 270)],
+              fill=(31, 48, 70, 255))
+    d.rectangle((tx - 30, 250, tx + 30, 283), fill=(42, 59, 81, 255))
+    d.rectangle((tx - 22, 207, tx + 22, 227), fill=(42, 59, 81, 255))
+    d.line((tx, 207, tx, 16), fill=(20, 34, 56, 255), width=5)
+    d.ellipse((tx - 5, 9, tx + 5, 19), fill=(225, 235, 248, 255))
+    image.alpha_composite(layer)
 
-    glass_card(draw, (50, 545, 1030, 795))
+    shade = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    ImageDraw.Draw(shade).rectangle((0, 500, WIDTH, HEIGHT), fill=(7, 22, 49, 65))
+    image.alpha_composite(shade)
 
-    description = WEATHER_CODES.get(
-        weather["code"],
-        "Переменная погода"
-    )
+def draw_cloud(image, x, y, scale=1.0, alpha=245):
+    layer = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    # Soft shadow and layered cloud lobes.
+    d.ellipse((x, y + 48*scale, x + 220*scale, y + 135*scale),
+              fill=(10, 26, 53, 75))
+    col = (232, 241, 252, alpha)
+    d.ellipse((x + 5*scale, y + 35*scale, x + 125*scale, y + 135*scale), fill=col)
+    d.ellipse((x + 55*scale, y, x + 170*scale, y + 135*scale), fill=col)
+    d.ellipse((x + 120*scale, y + 35*scale, x + 245*scale, y + 140*scale), fill=col)
+    image.alpha_composite(layer.filter(ImageFilter.GaussianBlur(1.4)))
 
-    draw.text(
-        (90, 580),
-        "ЗАВТРА",
-        font=small,
-        fill=(190, 210, 240)
-    )
+def draw_sun(image, cx, cy, radius=55):
+    glow = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    gd.ellipse((cx-radius-38, cy-radius-38, cx+radius+38, cy+radius+38),
+               fill=(255, 194, 76, 120))
+    image.alpha_composite(glow.filter(ImageFilter.GaussianBlur(35)))
+    d = ImageDraw.Draw(image)
+    d.ellipse((cx-radius, cy-radius, cx+radius, cy+radius),
+              fill=(255, 207, 91, 255), outline=(255, 244, 198, 235), width=4)
 
-    draw.text(
-        (90, 635),
-        description,
-        font=medium,
-        fill="white"
-    )
+def draw_icon(image, code, x, y, scale=1.0):
+    effect = weather_effect(code if code is not None else 2)
+    if effect == "sun":
+        draw_sun(image, int(x + 55*scale), int(y + 55*scale), int(34*scale))
+    elif effect == "cloud":
+        draw_cloud(image, x, y + 10*scale, 0.78*scale)
+    elif effect in ("rain", "storm"):
+        draw_cloud(image, x, y, 0.78*scale)
+        d = ImageDraw.Draw(image, "RGBA")
+        for i in range(4):
+            xx = x + (40 + i*38)*scale
+            d.line((xx, y+104*scale, xx-11*scale, y+136*scale),
+                   fill=(153, 211, 255, 235), width=max(3, int(5*scale)))
+    elif effect == "snow":
+        draw_cloud(image, x, y, 0.78*scale)
+        d = ImageDraw.Draw(image, "RGBA")
+        for i in range(4):
+            xx = x + (40 + i*38)*scale
+            yy = y + 133*scale
+            r = 5*scale
+            d.ellipse((xx-r, yy-r, xx+r, yy+r), fill=(255, 255, 255, 245))
 
-    draw.text(
-        (90, 710),
-        f"Максимум  {weather['max']:.0f}°",
-        font=normal,
-        fill="white"
-    )
+def panel(image, box, radius=32):
+    # True translucent glass: draw on RGBA overlay, then composite once.
+    x1, y1, x2, y2 = box
+    shadow = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow)
+    sd.rounded_rectangle((x1+2, y1+9, x2+2, y2+12), radius=radius,
+                         fill=(0, 0, 0, 58))
+    image.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(12)))
 
-    draw.text(
-        (570, 710),
-        f"Минимум  {weather['min']:.0f}°",
-        font=normal,
-        fill="white"
-    )
+    glass = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glass)
+    gd.rounded_rectangle(box, radius=radius,
+                         fill=(33, 70, 119, 155),
+                         outline=(226, 239, 255, 190), width=3)
+    # Subtle top sheen.
+    gd.line((x1+35, y1+3, x2-35, y1+3), fill=(255, 255, 255, 70), width=2)
+    image.alpha_composite(glass)
 
-    # Показатели
+def draw_card(weather):
+    effect = weather_effect(weather["code"])
+    image = gradient_background(effect)
+    add_atmosphere(image, effect)
+    add_tashkent_skyline(image)
 
-    glass_card(draw, (50, 825, 1030, 1035))
+    white = (255, 255, 255, 255)
+    muted = (216, 230, 250, 255)
+    d = ImageDraw.Draw(image, "RGBA")
+    title = load_font(47, True)
+    body = load_font(31)
+    section = load_font(38, True)
+    small = load_font(25)
+    big = load_font(190)
 
-    draw.text(
-        (90, 865),
-        "ВЛАЖНОСТЬ",
-        font=small,
-        fill=(185, 205, 235)
-    )
+    # Header.
+    d.ellipse((64, 54, 96, 86), outline=white, width=5)
+    d.ellipse((75, 65, 85, 75), fill=white)
+    d.text((120, 42), "Погода в Ташкенте", font=title, fill=white)
+    d.rounded_rectangle((65, 113, 96, 144), radius=5, outline=muted, width=4)
+    d.text((120, 107), f"Прогноз на {weather['date'].strftime('%d.%m.%Y')}",
+           font=body, fill=white)
 
-    draw.text(
-        (90, 920),
-        f"{weather['humidity']}%",
-        font=medium,
-        fill="white"
-    )
+    # Hero temperature and weather art.
+    draw_icon(image, weather["current_code"], 600, 190, 1.55)
+    d = ImageDraw.Draw(image, "RGBA")
+    d.text((65, 165), f"{weather['current_temp']:.0f}°", font=big, fill=white)
+    d.text((80, 370), "Сейчас в Ташкенте", font=load_font(39), fill=white)
+    d.text((80, 427), f"Ощущается как {weather['feels_like']:.0f}°",
+           font=body, fill=muted)
 
-    draw.text(
-        (390, 865),
-        "ВЕТЕР",
-        font=small,
-        fill=(185, 205, 235)
-    )
+    # Tomorrow summary.
+    panel(image, (50, 510, 1030, 665))
+    d = ImageDraw.Draw(image, "RGBA")
+    d.text((95, 535), "Завтра", font=section, fill=white)
+    draw_icon(image, weather["code"], 210, 565, 0.72)
+    d = ImageDraw.Draw(image, "RGBA")
+    d.line((395, 535, 395, 640), fill=(235, 244, 255, 180), width=2)
+    description = WEATHER_NAMES.get(weather["code"], "Переменная облачность")
+    # Fit long weather description into the center column.
+    desc_font = load_font(34 if len(description) < 20 else 29, True)
+    d.text((430, 555), description, font=desc_font, fill=white)
+    d.line((795, 535, 795, 640), fill=(235, 244, 255, 180), width=2)
+    d.text((830, 540), f"↑ {weather['max']:+.0f}°", font=section, fill=white)
+    d.text((830, 590), f"↓ {weather['min']:+.0f}°", font=section, fill=white)
 
-    draw.text(
-        (390, 920),
-        f"{weather['wind']:.0f} км/ч",
-        font=medium,
-        fill="white"
-    )
+    # Humidity / wind / precipitation.
+    panel(image, (50, 690, 1030, 840))
+    d = ImageDraw.Draw(image, "RGBA")
+    d.line((382, 715, 382, 815), fill=(235, 244, 255, 160), width=2)
+    d.line((710, 715, 710, 815), fill=(235, 244, 255, 160), width=2)
+    # Droplet icon.
+    d.ellipse((103, 727, 137, 775), outline=white, width=4)
+    d.polygon([(120, 715), (106, 744), (134, 744)], fill=white)
+    d.text((153, 720), "Влажность", font=body, fill=white)
+    d.text((153, 770), f"{weather['humidity']}%", font=section, fill=white)
+    # Wind icon.
+    for yy, length in ((730, 62), (750, 48), (770, 60)):
+        d.arc((418, yy, 418+length, yy+22), 190, 345, fill=white, width=4)
+    d.text((500, 720), "Ветер", font=body, fill=white)
+    d.text((500, 770), f"{weather['wind']:.0f} км/ч", font=section, fill=white)
+    # Rain cloud icon.
+    d.ellipse((748, 735, 785, 770), outline=white, width=4)
+    d.ellipse((770, 722, 810, 770), outline=white, width=4)
+    d.ellipse((795, 738, 826, 770), outline=white, width=4)
+    d.line((765, 770, 760, 785), fill=(170, 220, 255, 255), width=4)
+    d.line((790, 770, 785, 785), fill=(170, 220, 255, 255), width=4)
+    d.text((845, 720), "Осадки", font=body, fill=white)
+    d.text((845, 770), f"{weather['rain']}%", font=section, fill=white)
 
-    draw.text(
-        (710, 865),
-        "ОСАДКИ",
-        font=small,
-        fill=(185, 205, 235)
-    )
+    # Hourly forecast.
+    d.text((80, 870), "◷  Прогноз по часам", font=section, fill=white)
+    panel(image, (50, 925, 1030, 1175))
+    d = ImageDraw.Draw(image, "RGBA")
+    columns = [175, 420, 665, 910]
+    for index, (x, item) in enumerate(zip(columns, weather["hours"])):
+        if index:
+            divider_x = 297 + (index-1)*245
+            d.line((divider_x, 955, divider_x, 1145),
+                   fill=(235, 244, 255, 155), width=2)
+        d.text((x-55, 950), f"{item['hour']:02d}:00",
+               font=body, fill=white)
+        draw_icon(image, item["code"], x-62, 1000, 0.55)
+        d = ImageDraw.Draw(image, "RGBA")
+        temp_text = "—" if item["temp"] is None else f"{item['temp']:.0f}°"
+        d.text((x-35, 1090), temp_text, font=section, fill=white)
 
-    draw.text(
-        (710, 920),
-        f"{weather['rain']}%",
-        font=medium,
-        fill="white"
-    )
-
-    # Почасовой прогноз
-
-    draw.text(
-        (65, 1065),
-        "ПРОГНОЗ ПО ЧАСАМ",
-        font=small,
-        fill=(190, 210, 240)
-    )
-
-    positions = [90, 330, 570, 810]
-
-    for x, item in zip(positions, weather["hours"]):
-
-        draw.text(
-            (x, 1115),
-            f"{item['hour']:02d}:00",
-            font=small,
-            fill=(190, 210, 240)
-        )
-
-        temp = (
-            "—"
-            if item["temp"] is None
-            else f"{item['temp']:.0f}°"
-        )
-
-        draw.text(
-            (x, 1165),
-            temp,
-            font=medium,
-            fill="white"
-        )
-
-    # Восход и закат
-
-    draw.text(
-        (65, 1260),
-        f"ВОСХОД  {weather['sunrise']}",
-        font=small,
-        fill=(190, 210, 240)
-    )
-
-    draw.text(
-        (580, 1260),
-        f"ЗАКАТ  {weather['sunset']}",
-        font=small,
-        fill=(190, 210, 240)
-    )
+    # Sunrise and sunset.
+    panel(image, (50, 1200, 1030, 1315), radius=28)
+    d = ImageDraw.Draw(image, "RGBA")
+    # Sunrise icon.
+    d.arc((112, 1230, 178, 1290), 180, 360, fill=(255, 205, 105, 255), width=5)
+    d.line((105, 1270, 185, 1270), fill=(255, 205, 105, 255), width=5)
+    d.text((210, 1235), "Восход", font=body, fill=white)
+    d.text((355, 1230), weather["sunrise"], font=section, fill=white)
+    d.line((540, 1220, 540, 1295), fill=(235, 244, 255, 160), width=2)
+    # Sunset icon.
+    d.arc((610, 1230, 676, 1290), 180, 360, fill=(255, 205, 105, 255), width=5)
+    d.line((603, 1270, 683, 1270), fill=(255, 205, 105, 255), width=5)
+    d.text((710, 1235), "Закат", font=body, fill=white)
+    d.text((835, 1230), weather["sunset"], font=section, fill=white)
 
     return image
 
-
-# ==================================================
-# АНИМАЦИЯ ДОЖДЯ
-# ==================================================
-
-def add_rain(frame, phase, intensity=1):
-
-    draw = ImageDraw.Draw(frame, "RGBA")
-
-    random.seed(123)
-
-    count = 180 if intensity == 1 else 300
-
-    for i in range(count):
-
-        x = random.randint(0, W)
-        start_y = random.randint(-H, H)
-
-        speed = random.randint(25, 42)
-
-        y = (start_y + phase * speed) % H
-
-        length = random.randint(22, 42)
-
-        draw.line(
-            (x, y, x-12, y+length),
-            fill=(185, 220, 255, 135),
-            width=3
-        )
-
-    return frame
-
-
-# ==================================================
-# АНИМАЦИЯ СНЕГА
-# ==================================================
-
-def add_snow(frame, phase):
-
-    draw = ImageDraw.Draw(frame, "RGBA")
-
-    random.seed(456)
-
-    for i in range(150):
-
-        x = random.randint(0, W)
-        start_y = random.randint(-H, H)
-
-        speed = random.randint(8, 18)
-
-        y = (start_y + phase * speed) % H
-
-        drift = int(math.sin((phase+i)/4) * 18)
-
-        radius = random.randint(3, 7)
-
-        draw.ellipse(
-            (
-                x+drift-radius,
-                y-radius,
-                x+drift+radius,
-                y+radius
-            ),
-            fill=(255, 255, 255, 210)
-        )
-
-    return frame
-
-
-# ==================================================
-# АНИМАЦИЯ ОБЛАКОВ
-# ==================================================
-
-def add_moving_clouds(frame, phase):
-
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-
-    draw = ImageDraw.Draw(overlay, "RGBA")
-
-    for i in range(5):
-
-        x = ((i*260 + phase*12) % (W+300)) - 150
-        y = 170 + i*65
-
-        draw_cloud(draw, x, y, 0.9)
-
-    frame.alpha_composite(overlay)
-
-    return frame
-
-
-# ==================================================
-# СОЛНЦЕ
-# ==================================================
-
-def add_sun_animation(frame, phase):
-
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-
-    draw = ImageDraw.Draw(overlay)
-
-    pulse = int(15 + 12*math.sin(phase/3))
-
-    draw.ellipse(
-        (
-            750-pulse,
-            240-pulse,
-            900+pulse,
-            390+pulse
-        ),
-        fill=(255, 205, 100, 40)
-    )
-
-    overlay = overlay.filter(
-        ImageFilter.GaussianBlur(35)
-    )
-
-    frame.alpha_composite(overlay)
-
-    return frame
-
-
-# ==================================================
-# СОЗДАНИЕ GIF
-# ==================================================
-
-def create_animation(weather):
-
-    base = create_card(weather)
-
-    effect = get_effect(weather["code"])
-
+def animate_weather(base, weather):
+    effect = weather_effect(weather["code"])
     frames = []
+    random.seed(2026)
 
-    strong = weather["code"] in [
-        65, 67, 75, 82, 86, 95, 96, 99
+    # Fixed particle paths keep the animation smooth and looping.
+    rain_particles = [
+        (random.randint(0, WIDTH), random.randint(0, HEIGHT),
+         random.randint(22, 42), random.randint(18, 34))
+        for _ in range(260 if effect in ("rain", "storm") else 1)
+    ]
+    snow_particles = [
+        (random.randint(0, WIDTH), random.randint(0, HEIGHT),
+         random.randint(5, 15), random.randint(2, 6), random.random()*6.28)
+        for _ in range(170 if effect == "snow" else 1)
     ]
 
-    for phase in range(FRAMES):
-
+    for frame_no in range(FRAME_COUNT):
         frame = base.copy()
+        overlay = Image.new("RGBA", frame.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay, "RGBA")
 
-        if effect in ["rain", "storm"]:
-
-            add_rain(
-                frame,
-                phase,
-                2 if strong else 1
-            )
+        if effect in ("rain", "storm"):
+            count = len(rain_particles)
+            for x, y0, length, speed in rain_particles:
+                y = (y0 + frame_no*speed) % (HEIGHT + 80) - 40
+                x2 = x - int(length*0.28)
+                d.line((x, y, x2, y+length),
+                       fill=(190, 222, 255, 125), width=3)
+            if effect == "storm" and frame_no in (2, 3, 14):
+                d.rectangle((0, 0, WIDTH, HEIGHT), fill=(255, 255, 255, 35))
 
         elif effect == "snow":
-
-            add_snow(frame, phase)
+            for x, y0, speed, radius, phase in snow_particles:
+                y = (y0 + frame_no*speed) % HEIGHT
+                drift = int(math.sin(phase + frame_no*0.22)*24)
+                d.ellipse((x+drift-radius, y-radius, x+drift+radius, y+radius),
+                          fill=(255, 255, 255, 220))
 
         elif effect == "cloud":
-
-            add_moving_clouds(frame, phase)
+            # Fine, translucent cloud wisps drift across the whole sky.
+            for i in range(8):
+                x = ((i*190 + frame_no*8) % (WIDTH+240)) - 120
+                y = 180 + (i % 3)*95
+                d.ellipse((x, y, x+210, y+48), fill=(224, 236, 250, 24))
 
         elif effect == "sun":
+            pulse = int(8 + 7*math.sin(frame_no*math.pi/12))
+            d.ellipse((730-pulse, 150-pulse, 930+pulse, 350+pulse),
+                      fill=(255, 205, 105, 13))
 
-            add_sun_animation(frame, phase)
-
-        if effect == "storm" and phase % 8 in [0, 1]:
-
-            flash = Image.new(
-                "RGBA",
-                (W, H),
-                (255, 255, 255, 35)
-            )
-
-            frame.alpha_composite(flash)
-
-        frames.append(
-            frame.convert("RGB").quantize(
-                colors=256,
-                method=Image.Quantize.MEDIANCUT
-            )
-        )
+        frame.alpha_composite(overlay)
+        frames.append(frame.convert("RGB").quantize(
+            colors=256, method=Image.Quantize.MEDIANCUT
+        ))
 
     frames[0].save(
         OUTPUT_FILE,
         save_all=True,
         append_images=frames[1:],
-        duration=DURATION,
+        duration=FRAME_DURATION_MS,
         loop=0,
-        optimize=True
+        optimize=True,
+        disposal=2
     )
-
-    print("GIF успешно создан:", OUTPUT_FILE)
-
     return OUTPUT_FILE
 
-
-# ==================================================
-# ОТПРАВКА В TELEGRAM
-# ==================================================
-
-def send_weather_animation(path):
-
+def send_animation(path):
     if not BOT_TOKEN or not GROUP_CHAT_ID:
-        raise ValueError(
-            "Не найдены BOT_TOKEN или GROUP_CHAT_ID"
-        )
-
-    url = (
-        f"https://api.telegram.org/"
-        f"bot{BOT_TOKEN}/sendAnimation"
-    )
-
+        raise RuntimeError("Не заданы GitHub Secrets BOT_TOKEN и GROUP_CHAT_ID")
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendAnimation"
     with open(path, "rb") as animation:
-
         response = requests.post(
             url,
             data={"chat_id": GROUP_CHAT_ID},
-            files={"animation": animation},
+            files={"animation": ("weather.gif", animation, "image/gif")},
             timeout=120
         )
-
     response.raise_for_status()
-
     result = response.json()
-
     if not result.get("ok"):
-        raise RuntimeError(result)
-
-    print("Погодная GIF успешно отправлена!")
-
-
-# ==================================================
-# ЗАПУСК
-# ==================================================
+        raise RuntimeError(f"Telegram API: {result}")
+    print("Анимированная погодная карточка отправлена.")
 
 def main():
-
-    print("Получаем прогноз...")
-
+    print("Получаем прогноз Open-Meteo...")
     weather = get_weather()
-
-    print("Создаём качественную анимацию...")
-
-    animation = create_animation(weather)
-
-    print("Отправляем в Telegram...")
-
-    send_weather_animation(animation)
-
+    print("Рисуем карточку...")
+    base = draw_card(weather)
+    print("Создаём GIF...")
+    gif_path = animate_weather(base, weather)
+    print("Отправляем GIF в Telegram...")
+    send_animation(gif_path)
 
 if __name__ == "__main__":
     main()
