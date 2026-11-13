@@ -2,29 +2,30 @@ name: Daily Telegram Greeting
 
 on:
   schedule:
-    - cron: "0 4 * * *"
-    - cron: "0 5 * * *"
-    - cron: "0 6 * * *"
-    - cron: "0 15 * * *"
-    - cron: "0 19 * * *"
+    - cron: "0 4 * * *"   # 09:00 — утреннее приветствие
+    - cron: "0 5 * * *"   # 10:00 — курсы валют
+    - cron: "0 6 * * *"   # 11:00 — новости
+    - cron: "0 15 * * *"  # 20:00 — погода
+    - cron: "0 19 * * *"  # 00:00 — поздравление с праздником
 
   workflow_dispatch:
     inputs:
       task:
-        description: "Что запустить?"
+        description: "Выбери задачу для запуска"
         required: true
         type: choice
         options:
-          - currency
           - morning
-          - holiday
+          - currency
           - news
           - weather
+          - holiday
 
 permissions:
   contents: write
 
 jobs:
+
   send-morning-greeting:
     if: |
       (github.event_name == 'schedule' && github.event.schedule == '0 4 * * *') ||
@@ -32,9 +33,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -55,9 +58,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -78,16 +83,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Send latest news
+      - name: Send news
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
@@ -95,15 +102,11 @@ jobs:
 
       - name: Save news history
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add sent_news.json
-          if ! git diff --cached --quiet; then
-            git commit -m "Update sent news history"
-            git push
-          else
-            echo "News history has not changed."
-          fi
+          git diff --cached --quiet || git commit -m "Update sent news history"
+          git push
 
   send-weather:
     if: |
@@ -112,9 +115,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -129,14 +139,16 @@ jobs:
 
   send-holiday-greeting:
     if: |
-      (github.event.schedule == '0 19 * * *') ||
+      (github.event_name == 'schedule' && github.event.schedule == '0 19 * * *') ||
       (github.event_name == 'workflow_dispatch' && inputs.task == 'holiday')
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
