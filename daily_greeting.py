@@ -4,10 +4,10 @@ from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-import requests
 from telegram import Bot
 
 from currency_card import create_currency_card
+
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "").strip()
@@ -20,14 +20,6 @@ PHOTO_PATH = (
     / "e535f35b95dfc15a5c320cb2990b5914.jpg"
 )
 
-CBU_URL = "https://cbu.uz/ru/arkhiv-kursov-valyut/json/"
-
-CURRENCIES = {
-    "USD": "🇺🇸 Доллар США",
-    "RUB": "🇷🇺 Российский рубль",
-    "TRY": "🇹🇷 Турецкая лира",
-    "EUR": "🇪🇺 Евро",
-}
 
 HOLIDAYS = {
     (1, 1): (
@@ -37,6 +29,7 @@ HOLIDAYS = {
         "Пусть все будут живы и здоровы, а в доме всегда "
         "царят любовь и взаимопонимание! ❤️"
     ),
+
     (3, 8): (
         "🌷 С 8 Марта, дорогие наши женщины!\n\n"
         "Желаю вам крепкого здоровья, счастья, любви "
@@ -44,6 +37,7 @@ HOLIDAYS = {
         "Пусть каждый день приносит улыбки и хорошие новости! ❤️"
     ),
 }
+
 
 WEEKLY_MESSAGES = {
     0: (
@@ -56,6 +50,7 @@ WEEKLY_MESSAGES = {
         "не забывайте, что семья — самое дорогое в жизни.\n\n"
         "Хорошей недели, мои родные! ❤️"
     ),
+
     1: (
         "❤️ Доброе утро, родные мои!\n\n"
         "Желаю всем крепкого здоровья, хорошего настроения "
@@ -66,6 +61,7 @@ WEEKLY_MESSAGES = {
         "Пусть у каждого всё складывается хорошо. "
         "Берегите себя и своих близких! ❤️"
     ),
+
     2: (
         "☀️ Доброе утро, моя дорогая семья!\n\n"
         "В жизни не всегда всё получается сразу, "
@@ -76,6 +72,7 @@ WEEKLY_MESSAGES = {
         "уважение и понимание.\n\n"
         "Удачного дня, мои родные! ❤️"
     ),
+
     3: (
         "🤗 Доброе утро, мои дорогие!\n\n"
         "Хочу пожелать всем спокойного и удачного дня.\n\n"
@@ -86,6 +83,7 @@ WEEKLY_MESSAGES = {
         "Цените друг друга, помогайте и поддерживайте. "
         "Всем добра и здоровья! ❤️"
     ),
+
     4: (
         "🤲 Доброе утро, моя дорогая семья!\n\n"
         "С благословенной пятницей вас! ❤️\n\n"
@@ -97,6 +95,7 @@ WEEKLY_MESSAGES = {
         "Берегите друг друга, мои родные!\n\n"
         "С пятницей! 🤲❤️"
     ),
+
     5: (
         "🏡 Доброе утро, мои любимые!\n\n"
         "Наступили выходные. Желаю всем хорошего отдыха, "
@@ -107,6 +106,7 @@ WEEKLY_MESSAGES = {
         "Пусть дома всегда будет уютно, тепло и спокойно.\n\n"
         "Хороших выходных, родные! ❤️☕"
     ),
+
     6: (
         "☀️ Доброе утро, моя дорогая семья! ❤️\n\n"
         "Пусть воскресенье принесёт всем спокойствие, "
@@ -123,48 +123,6 @@ WEEKLY_MESSAGES = {
 }
 
 
-def get_exchange_rates():
-    response = requests.get(CBU_URL, timeout=20)
-    response.raise_for_status()
-
-    data = response.json()
-
-    result = {}
-    actual_date = None
-
-    for currency in data:
-        code = currency.get("Ccy")
-
-        if code in CURRENCIES:
-            result[code] = currency.get("Rate")
-            actual_date = currency.get("Date")
-
-    missing = set(CURRENCIES) - set(result)
-
-    if missing:
-        raise ValueError(
-            f"Не найдены валюты: {', '.join(sorted(missing))}"
-        )
-
-    lines = [
-        "💰 ОФИЦИАЛЬНЫЕ КУРСЫ ВАЛЮТ 🇺🇿",
-        "",
-        f"📅 Дата курса: {actual_date}",
-        "",
-    ]
-
-    for code, name in CURRENCIES.items():
-        lines.append(f"{name}: {result[code]} сум")
-
-    lines.extend([
-        "",
-        "Источник: Центральный банк Республики Узбекистан.",
-        "🌐 https://cbu.uz/ru/arkhiv-kursov-valyut/"
-    ])
-
-    return "\n".join(lines)
-
-
 def get_message():
     now = datetime.now(TZ)
 
@@ -174,12 +132,16 @@ def get_message():
     if MESSAGE_TYPE == "holiday":
         return HOLIDAYS.get((now.month, now.day))
 
-    raise ValueError(f"Неизвестный тип сообщения: {MESSAGE_TYPE}")
+    raise ValueError(
+        f"Неизвестный тип сообщения: {MESSAGE_TYPE}"
+    )
 
 
 async def main():
     if not BOT_TOKEN or not GROUP_CHAT_ID:
-        raise ValueError("Не заданы BOT_TOKEN и GROUP_CHAT_ID.")
+        raise ValueError(
+            "Не заданы BOT_TOKEN и GROUP_CHAT_ID."
+        )
 
     now = datetime.now(TZ)
     bot = Bot(token=BOT_TOKEN)
@@ -187,34 +149,34 @@ async def main():
     try:
         await bot.initialize()
 
-        # Визуальная карточка курсов валют
+        # КУРСЫ ВАЛЮТ — ОТПРАВЛЯЕМ ТОЛЬКО ИЗОБРАЖЕНИЕ
         if MESSAGE_TYPE == "currency":
-            # Получаем актуальные курсы
-            rates = await asyncio.to_thread(get_exchange_rates)
 
-            # Создаём изображение
             image_path = await asyncio.to_thread(
                 create_currency_card
             )
 
-            # Отправляем изображение с подписью
             with open(image_path, "rb") as photo:
                 await bot.send_photo(
                     chat_id=GROUP_CHAT_ID,
-                    photo=photo,
-                    caption=rates
+                    photo=photo
                 )
 
-            print("Карточка курсов валют успешно отправлена!")
+            print(
+                "Карточка курсов валют успешно отправлена!"
+            )
             return
 
+        # ПОЛУЧАЕМ ТЕКСТ СООБЩЕНИЯ
         message = get_message()
 
         if message is None:
-            print("Сегодня нет праздника. Сообщение не отправляется.")
+            print(
+                "Сегодня нет праздника. Сообщение не отправляется."
+            )
             return
 
-        # Утреннее приветствие по пятницам с фотографией
+        # ПЯТНИЧНОЕ УТРЕННЕЕ СООБЩЕНИЕ С ФОТОГРАФИЕЙ
         if MESSAGE_TYPE == "morning" and now.weekday() == 4:
 
             if not PHOTO_PATH.exists():
@@ -229,15 +191,20 @@ async def main():
                     caption=message
                 )
 
-            print("Пятничная фотография отправлена!")
+            print(
+                "Пятничная фотография отправлена!"
+            )
 
+        # ОБЫЧНОЕ УТРЕННЕЕ СООБЩЕНИЕ ИЛИ ПОЗДРАВЛЕНИЕ
         else:
             await bot.send_message(
                 chat_id=GROUP_CHAT_ID,
                 text=message
             )
 
-            print("Сообщение успешно отправлено!")
+            print(
+                "Сообщение успешно отправлено!"
+            )
 
     finally:
         await bot.shutdown()
