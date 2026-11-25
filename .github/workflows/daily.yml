@@ -20,6 +20,7 @@ on:
           - news
           - weather
           - holiday
+          - birthday_preview
 
 permissions:
   contents: write
@@ -161,3 +162,31 @@ jobs:
           GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
           MESSAGE_TYPE: holiday
         run: python daily_greeting.py
+
+          birthday-preview:
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      inputs.task == 'birthday_preview'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate birthday preview
+        run: python birthday_greetings.py preview --name "Козимжон"
+
+      - name: Upload birthday preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: birthday-preview
+          path: birthday_cache/
+          if-no-files-found: error
