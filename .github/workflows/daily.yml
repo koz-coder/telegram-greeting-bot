@@ -163,7 +163,7 @@ jobs:
           MESSAGE_TYPE: holiday
         run: python daily_greeting.py
 
-          birthday-preview:
+  birthday-preview:
     if: |
       github.event_name == 'workflow_dispatch' &&
       inputs.task == 'birthday_preview'
