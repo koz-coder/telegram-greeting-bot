@@ -2,10 +2,11 @@ name: Birthday Automation
 
 on:
   schedule:
-    # 23:55 по Ташкенту — заранее подготовить открытки на завтра
+    # 23:55 по Ташкенту — подготовить открытки на завтра
     - cron: "55 18 * * *"
-    # 00:00 по Ташкенту — отправить поздравления сегодняшним именинникам
+    # 00:00 по Ташкенту — отправить поздравления именинникам
     - cron: "0 19 * * *"
+
   workflow_dispatch:
     inputs:
       task:
@@ -26,6 +27,7 @@ concurrency:
 jobs:
   birthday:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,25 +42,38 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # Подготовка выполняется по расписанию в 23:55
+      # или вручную при выборе prepare.
+      - name: Prepare tomorrow's birthday cards
+        if: |
+          (github.event_name == 'schedule' && github.event.schedule == '55 18 * * *') ||
+          (github.event_name == 'workflow_dispatch' && inputs.task == 'prepare')
+        run: python birthday_greetings.py prepare
+
+      # Не пытаемся добавлять несуществующую папку,
+      # если на следующий день нет именинников.
       - name: Save prepared cards to repository
         if: |
           (github.event_name == 'schedule' && github.event.schedule == '55 18 * * *') ||
           (github.event_name == 'workflow_dispatch' && inputs.task == 'prepare')
         run: |
-          if [ -d birthday_cache ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ -d birthday_cache ] && [ -n "$(find birthday_cache -type f -print -quit)" ]; then
             git add birthday_cache/
             if ! git diff --cached --quiet; then
               git commit -m "Prepare birthday cards"
-              git push
+              git push origin HEAD:main
             else
-              echo "No birthday cards to save."
+              echo "No new birthday cards to save."
             fi
           else
-            echo "Tomorrow there are no birthdays. Nothing to prepare."
+            echo "No birthdays to prepare tomorrow."
           fi
 
+      # Отправка выполняется по расписанию в 00:00
+      # или вручную при выборе send.
       - name: Send today's birthday greetings
         if: |
           (github.event_name == 'schedule' && github.event.schedule == '0 19 * * *') ||
@@ -68,6 +83,7 @@ jobs:
           GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
         run: python birthday_greetings.py send
 
+      # Сохраняем журнал только если Python создал или изменил его.
       - name: Save sent-birthday log
         if: |
           (github.event_name == 'schedule' && github.event.schedule == '0 19 * * *') ||
@@ -75,10 +91,15 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add birthday_sent.json
-          if ! git diff --cached --quiet; then
-            git commit -m "Record sent birthday greetings"
-            git push
+
+          if [ -f birthday_sent.json ]; then
+            git add birthday_sent.json
+            if ! git diff --cached --quiet; then
+              git commit -m "Record sent birthday greetings"
+              git push origin HEAD:main
+            else
+              echo "No sent-birthday changes."
+            fi
           else
-            echo "No sent-birthday changes."
+            echo "No birthday greetings were sent; no log file to save."
           fi
