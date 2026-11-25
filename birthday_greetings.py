@@ -17,6 +17,7 @@ BASE_DIR = Path(__file__).resolve().parent
 
 BIRTHDAYS_FILE = BASE_DIR / "birthdays.json"
 CACHE_DIR = BASE_DIR / "birthday_cache"
+SENT_FILE = BASE_DIR / "birthday_sent.json"
 
 TZ = ZoneInfo("Asia/Tashkent")
 
@@ -557,6 +558,30 @@ def prepare_tomorrow():
 # ОТПРАВКА В TELEGRAM
 # =====================================================
 
+def load_sent_birthdays():
+    """Загружает список уже отправленных поздравлений."""
+    if not SENT_FILE.exists():
+        return {}
+
+    try:
+        with open(SENT_FILE, encoding="utf-8") as file:
+            data = json.load(file)
+            return data if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, OSError):
+        logging.exception("Не удалось прочитать журнал отправок.")
+        raise
+
+
+def save_sent_birthdays(data):
+    """Сохраняет журнал отправок атомарной заменой файла."""
+    temporary_file = SENT_FILE.with_suffix(".tmp")
+
+    with open(temporary_file, "w", encoding="utf-8") as file:
+        json.dump(data, file, ensure_ascii=False, indent=2)
+
+    temporary_file.replace(SENT_FILE)
+
+
 def send_today():
 
     import os
@@ -569,6 +594,8 @@ def send_today():
         raise RuntimeError("Не заданы Telegram Secrets.")
 
     today = datetime.now(TZ).date()
+    sent = load_sent_birthdays()
+    sent_today = sent.setdefault(today.isoformat(), [])
 
     for person in load_birthdays():
 
@@ -583,26 +610,33 @@ def send_today():
         ):
             continue
 
-        filename = f"{person['name']}_{today.year}"
+        name = person["name"]
+
+        # Защита от повторной отправки при повторном запуске workflow.
+        if name in sent_today:
+            logging.info("Уже отправлено сегодня: %s", name)
+            continue
+
+        filename = f"{name}_{today.year}"
 
         image_path = CACHE_DIR / f"{filename}.jpg"
         text_path = CACHE_DIR / f"{filename}.json"
 
         if not image_path.exists() or not text_path.exists():
             raise FileNotFoundError(
-                f"Нет подготовленной открытки: {filename}"
+                f"Нет подготовленной открытки: {filename}. "
+                "Проверь предварительный запуск подготовки."
             )
 
         with open(text_path, encoding="utf-8") as file:
             data = json.load(file)
 
         caption = (
-            f"🎂 С днём рождения, {person['name']}!\n\n"
+            f"🎂 С днём рождения, {name}!\n\n"
             f"{data['message']}"
         )
 
         with open(image_path, "rb") as photo:
-
             response = requests.post(
                 f"https://api.telegram.org/bot{token}/sendPhoto",
                 data={
@@ -616,11 +650,18 @@ def send_today():
             )
 
         response.raise_for_status()
+        result = response.json()
 
-        logging.info(
-            "Отправлено поздравление: %s",
-            person["name"]
-        )
+        if not result.get("ok"):
+            raise RuntimeError(
+                f"Telegram не подтвердил отправку для {name}: {result}"
+            )
+
+        # Записываем только после подтверждённой отправки.
+        sent_today.append(name)
+        save_sent_birthdays(sent)
+
+        logging.info("Отправлено поздравление: %s", name)
 
 
 # =====================================================
