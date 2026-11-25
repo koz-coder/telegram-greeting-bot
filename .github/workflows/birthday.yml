@@ -50,8 +50,7 @@ jobs:
           (github.event_name == 'workflow_dispatch' && inputs.task == 'prepare')
         run: python birthday_greetings.py prepare
 
-      # Не пытаемся добавлять несуществующую папку,
-      # если на следующий день нет именинников.
+      # Сохраняем созданные открытки в репозитории.
       - name: Save prepared cards to repository
         if: |
           (github.event_name == 'schedule' && github.event.schedule == '55 18 * * *') ||
@@ -83,11 +82,15 @@ jobs:
           GROUP_CHAT_ID: ${{ secrets.GROUP_CHAT_ID }}
         run: python birthday_greetings.py send
 
-      # Сохраняем журнал только если Python создал или изменил его.
+      # Сохраняем журнал даже если отправка завершилась частичной ошибкой:
+      # Python записывает имя после подтверждённой отправки каждого поздравления.
       - name: Save sent-birthday log
         if: |
-          (github.event_name == 'schedule' && github.event.schedule == '0 19 * * *') ||
-          (github.event_name == 'workflow_dispatch' && inputs.task == 'send')
+          always() &&
+          (
+            (github.event_name == 'schedule' && github.event.schedule == '0 19 * * *') ||
+            (github.event_name == 'workflow_dispatch' && inputs.task == 'send')
+          )
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -101,5 +104,5 @@ jobs:
               echo "No sent-birthday changes."
             fi
           else
-            echo "No birthday greetings were sent; no log file to save."
+            echo "No birthday log file exists."
           fi
