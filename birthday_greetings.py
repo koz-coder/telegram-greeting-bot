@@ -32,40 +32,28 @@ logging.basicConfig(level=logging.INFO)
 
 DESIGNS = [
     {
-        "top": (24, 43, 78),
-        "bottom": (83, 45, 91),
-        "accent": (238, 194, 123),
-        "decoration": "stars"
+        "top": (13, 22, 38),
+        "bottom": (25, 39, 59),
+        "accent": (198, 169, 119),
+        "text": (245, 243, 237)
     },
     {
-        "top": (27, 76, 79),
-        "bottom": (19, 43, 66),
-        "accent": (229, 203, 151),
-        "decoration": "circles"
+        "top": (18, 25, 35),
+        "bottom": (34, 43, 54),
+        "accent": (184, 190, 190),
+        "text": (246, 246, 242)
     },
     {
-        "top": (91, 48, 58),
-        "bottom": (36, 36, 70),
-        "accent": (247, 202, 133),
-        "decoration": "flowers"
+        "top": (24, 22, 31),
+        "bottom": (48, 38, 48),
+        "accent": (205, 174, 145),
+        "text": (248, 242, 237)
     },
     {
-        "top": (38, 65, 112),
-        "bottom": (20, 34, 66),
-        "accent": (226, 211, 161),
-        "decoration": "stars"
-    },
-    {
-        "top": (72, 58, 91),
-        "bottom": (31, 39, 72),
-        "accent": (240, 194, 137),
-        "decoration": "circles"
-    },
-    {
-        "top": (34, 83, 69),
-        "bottom": (20, 42, 58),
-        "accent": (231, 205, 151),
-        "decoration": "flowers"
+        "top": (13, 29, 35),
+        "bottom": (24, 48, 53),
+        "accent": (174, 190, 171),
+        "text": (243, 246, 239)
     }
 ]
 
@@ -182,6 +170,19 @@ def calculate_age(birth_date, target_date):
     return age
 
 
+
+def age_suffix(age):
+    last_two = age % 100
+    last = age % 10
+
+    if 11 <= last_two <= 14:
+        return "лет"
+    if last == 1:
+        return "год"
+    if 2 <= last <= 4:
+        return "года"
+    return "лет"
+
 def get_message(person, year):
 
     seed = f"{person['name']}-{year}"
@@ -206,18 +207,15 @@ def get_message(person, year):
 
 def create_background(person, year):
 
-    rng = random.Random(
-        f"{person['name']}-{year}-design"
-    )
-
+    # Сдержанная палитра: разные оттенки, без случайных украшений.
+    rng = random.Random(f"{person['name']}-{year}-premium")
     design = rng.choice(DESIGNS)
 
     image = Image.new("RGB", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(image)
 
     for y in range(HEIGHT):
-        t = y / HEIGHT
-
+        t = y / max(HEIGHT - 1, 1)
         color = tuple(
             int(
                 design["top"][i] * (1 - t)
@@ -225,59 +223,26 @@ def create_background(person, year):
             )
             for i in range(3)
         )
-
         draw.line((0, y, WIDTH, y), fill=color)
 
-    # Мягкое свечение
-    glow = Image.new(
-        "RGBA",
-        (WIDTH, HEIGHT),
-        (0, 0, 0, 0)
+    # Едва заметное центральное свечение, без блёсток и фигур.
+    glow = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    glow_draw.ellipse(
+        (170, 230, 910, 1030),
+        fill=(*design["accent"], 20)
     )
-
-    gd = ImageDraw.Draw(glow)
-
-    gd.ellipse(
-        (250, 100, 850, 700),
-        fill=(*design["accent"], 55)
-    )
-
-    glow = glow.filter(ImageFilter.GaussianBlur(130))
-
-    image = Image.alpha_composite(
-        image.convert("RGBA"),
-        glow
-    )
+    glow = glow.filter(ImageFilter.GaussianBlur(190))
+    image = Image.alpha_composite(image.convert("RGBA"), glow)
 
     draw = ImageDraw.Draw(image)
-    accent = design["accent"]
 
-    # Декор только сверху и снизу — центральная область свободна для текста
-    for i in range(18):
-        x = rng.randint(65, WIDTH - 65)
-
-        if i < 9:
-            y = rng.randint(65, 280)
-        else:
-            y = rng.randint(1050, 1280)
-
-        radius = rng.randint(3, 9)
-
-        draw.ellipse(
-            (
-                x - radius,
-                y - radius,
-                x + radius,
-                y + radius
-            ),
-            fill=(*accent, rng.randint(45, 110))
-        )
-
+    # Тонкая рамка и короткий разделитель — минималистичное оформление.
     draw.rounded_rectangle(
-        (35, 35, WIDTH - 35, HEIGHT - 35),
-        radius=35,
-        outline=accent,
-        width=3
+        (42, 42, WIDTH - 42, HEIGHT - 42),
+        radius=22,
+        outline=(*design["accent"], 150),
+        width=2
     )
 
     return image, design
@@ -339,27 +304,24 @@ def wrap_text(draw, text, font, max_width):
 
 def get_card_wish(person):
 
-    if person["relation"] == "mother":
-        return [
-            "Пусть в доме всегда",
-            "будут тепло, мир",
-            "и радость."
-        ]
+    relation = person.get("relation", "son")
 
-    elif person["relation"] == "daughter":
-        return [
-            "Пусть каждый день",
-            "приносит счастье,",
-            "любовь и улыбки."
-        ]
+    if relation == "mother":
+        return (
+            "Пусть рядом всегда будут любовь близких, "
+            "душевный покой и поводы для улыбки."
+        )
 
-    else:
-        return [
-            "Пусть каждый день",
-            "приносит радость,",
-            "силы и новые",
-            "возможности."
-        ]
+    if relation == "daughter":
+        return (
+            "Пусть в жизни будет больше счастливых дней, "
+            "любви и тепла. Береги себя, родная."
+        )
+
+    return (
+        "Желаю здоровья, внутренней силы и уверенности "
+        "в каждом шаге. Береги себя и своих близких."
+    )
 
 
 def create_card(person, target_date, output_path):
@@ -371,58 +333,79 @@ def create_card(person, target_date, output_path):
 
     draw = ImageDraw.Draw(image)
     accent = design["accent"]
+    main_text = design["text"]
 
+    # Верхняя подпись
+    heading_font = load_font(30, True)
     centered_text(
         draw,
         "С ДНЁМ РОЖДЕНИЯ",
-        120,
-        load_font(43, True),
+        155,
+        heading_font,
         accent
     )
 
-    # Короткое пожелание в центре открытки
-    wish_lines = get_card_wish(person)
-    wish_font = load_font(39)
+    # Тонкий разделитель под заголовком
+    draw.line(
+        (390, 225, 690, 225),
+        fill=(*accent, 180),
+        width=2
+    )
 
-    y = 440
+    # Имя — главный акцент композиции
+    name = person["name"]
+    name_font = load_font(76, True)
 
-    for line in wish_lines:
-        centered_text(
-            draw,
-            line,
-            y,
-            wish_font,
-            "white"
-        )
-        y += 65
+    # Уменьшаем шрифт для длинных имён, чтобы они не выходили за поля.
+    while draw.textlength(name, font=name_font) > 900:
+        name_font = load_font(name_font.size - 4, True)
 
     centered_text(
         draw,
-        person["name"],
-        810,
-        load_font(76, True),
-        "white"
+        name,
+        440,
+        name_font,
+        main_text
     )
 
     age = calculate_age(
         person["birth_date"],
         target_date
     )
+    age_text = f"{age} {age_suffix(age)}"
 
     centered_text(
         draw,
-        f"{age} лет",
-        915,
-        load_font(55, True),
+        age_text,
+        555,
+        load_font(38),
         accent
     )
 
+    # Короткое пожелание, без шаблонных лозунгов и лишних украшений.
+    wish = get_card_wish(person)
+    wish_font = load_font(30)
+    lines = wrap_text(draw, wish, wish_font, 760)
+
+    line_height = 52
+    start_y = 770 - ((len(lines) - 1) * line_height) // 2
+
+    for index, line in enumerate(lines):
+        centered_text(
+            draw,
+            line,
+            start_y + index * line_height,
+            wish_font,
+            main_text
+        )
+
+    # Подпись отделена большим свободным пространством.
     centered_text(
         draw,
-        "С любовью, папа ❤️",
-        1120,
-        load_font(39, True),
-        "white"
+        "С любовью, папа",
+        1135,
+        load_font(30),
+        accent
     )
 
     image.convert("RGB").save(
