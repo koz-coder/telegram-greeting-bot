@@ -1,21 +1,17 @@
-import os
 import json
-import base64
 import random
-import logging
 import argparse
-import requests
+import logging
 
 from pathlib import Path
-from datetime import date, datetime, timedelta
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
-
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 
-# ============================================================
+# =====================================================
 # НАСТРОЙКИ
-# ============================================================
+# =====================================================
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -24,67 +20,142 @@ CACHE_DIR = BASE_DIR / "birthday_cache"
 
 TZ = ZoneInfo("Asia/Tashkent")
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
-GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID", "").strip()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-
-TEXT_MODEL = "gpt-4.1-mini"
-IMAGE_MODEL = "gpt-image-1"
-
 WIDTH = 1080
 HEIGHT = 1350
 
-OPENAI_URL = "https://api.openai.com/v1"
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO)
 
 
-# ============================================================
-# ЦВЕТОВЫЕ ПАЛИТРЫ
-# ============================================================
+# =====================================================
+# ДИЗАЙНЫ
+# =====================================================
 
-PALETTES = [
+DESIGNS = [
     {
-        "top": (24, 52, 91),
-        "bottom": (76, 40, 102),
-        "accent": (235, 190, 116)
+        "top": (24, 43, 78),
+        "bottom": (83, 45, 91),
+        "accent": (238, 194, 123),
+        "decoration": "stars"
     },
     {
-        "top": (35, 82, 91),
-        "bottom": (23, 48, 76),
-        "accent": (220, 190, 135)
+        "top": (27, 76, 79),
+        "bottom": (19, 43, 66),
+        "accent": (229, 203, 151),
+        "decoration": "circles"
     },
     {
-        "top": (83, 49, 82),
-        "bottom": (35, 39, 76),
-        "accent": (245, 194, 133)
+        "top": (91, 48, 58),
+        "bottom": (36, 36, 70),
+        "accent": (247, 202, 133),
+        "decoration": "flowers"
     },
     {
-        "top": (32, 64, 112),
-        "bottom": (20, 35, 68),
-        "accent": (218, 210, 157)
+        "top": (38, 65, 112),
+        "bottom": (20, 34, 66),
+        "accent": (226, 211, 161),
+        "decoration": "stars"
     },
     {
-        "top": (91, 55, 54),
-        "bottom": (40, 35, 64),
-        "accent": (247, 202, 126)
+        "top": (72, 58, 91),
+        "bottom": (31, 39, 72),
+        "accent": (240, 194, 137),
+        "decoration": "circles"
     },
     {
-        "top": (32, 83, 75),
-        "bottom": (22, 43, 62),
-        "accent": (230, 201, 145)
+        "top": (34, 83, 69),
+        "bottom": (20, 42, 58),
+        "accent": (231, 205, 151),
+        "decoration": "flowers"
     }
 ]
 
 
-# ============================================================
-# ШРИФТЫ
-# ============================================================
+# =====================================================
+# ТЕКСТЫ ПОЗДРАВЛЕНИЙ
+# =====================================================
 
-def get_font(size, bold=False):
+SON_MESSAGES = [
+    (
+        "Сынок, с днём рождения! Желаю тебе крепкого "
+        "здоровья, уверенности в себе и сил для достижения "
+        "всех твоих целей. Пусть в жизни будет больше "
+        "радостных событий, достойных людей и хороших "
+        "возможностей. Помни, что самое главное — оставаться "
+        "честным, добрым и уважать своих близких. "
+        "Я всегда желаю тебе только добра. Береги себя, "
+        "мой родной. Пусть у тебя всё будет хорошо!"
+    ),
+    (
+        "Мой родной сынок, поздравляю тебя с днём рождения! "
+        "Пусть каждый новый год жизни приносит тебе мудрость, "
+        "опыт и новые победы. Желаю здоровья, семейного "
+        "благополучия, душевного спокойствия и удачи. "
+        "Не бойся идти вперёд, верь в свои силы и цени "
+        "людей, которые искренне рядом с тобой. "
+        "Пусть твоя дорога будет светлой, а сердце всегда "
+        "остаётся добрым."
+    ),
+    (
+        "С днём рождения, сынок! Хочу пожелать тебе "
+        "крепкого здоровья, счастья и спокойствия. "
+        "Пусть всё, к чему ты стремишься, постепенно "
+        "становится реальностью. Цени свою семью, "
+        "уважай старших, поддерживай родных и никогда "
+        "не теряй доброту. Желаю тебе достойной жизни, "
+        "верных друзей и много поводов для улыбки. "
+        "Береги себя, родной!"
+    )
+]
+
+DAUGHTER_MESSAGES = [
+    (
+        "Доченька, с днём рождения! Желаю тебе здоровья, "
+        "счастья, любви и душевного тепла. Пусть в твоей "
+        "жизни будет как можно больше светлых дней, "
+        "искренних улыбок и добрых людей. Оставайся такой "
+        "же доброй и заботливой. Пусть все твои мечты "
+        "находят дорогу к исполнению. Береги себя, "
+        "моя родная!"
+    ),
+    (
+        "Моя дорогая доченька, поздравляю тебя! "
+        "Пусть судьба будет к тебе добра, пусть рядом "
+        "всегда будут любящие люди, а в душе царит "
+        "спокойствие. Желаю тебе крепкого здоровья, "
+        "женского счастья, радости и благополучия. "
+        "Никогда не забывай, насколько ты дорога "
+        "своей семье. Будь счастлива, родная!"
+    )
+]
+
+MOTHER_MESSAGES = [
+    (
+        "Любимая, с днём рождения! Желаю тебе крепкого "
+        "здоровья, спокойствия, душевного тепла и долгих "
+        "счастливых лет. Спасибо тебе за заботу о нашей "
+        "семье, за твоё терпение и любовь к детям. "
+        "Пусть каждый день приносит тебе радость, "
+        "внимание близких и хорошие новости. "
+        "Береги себя, родная. Ты заслуживаешь самого "
+        "доброго и светлого."
+    ),
+    (
+        "Моя любимая, поздравляю тебя с днём рождения! "
+        "От всего сердца желаю тебе здоровья, счастья "
+        "и душевного покоя. Пусть дети радуют тебя "
+        "своими успехами, в доме всегда будет тепло, "
+        "а рядом будут люди, которые ценят и любят тебя. "
+        "Спасибо за всё, что ты делаешь для нашей семьи. "
+        "Будь здорова и счастлива, родная!"
+    )
+]
+
+
+# =====================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# =====================================================
+
+def load_font(size, bold=False):
 
     paths = [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
@@ -97,285 +168,67 @@ def get_font(size, bold=False):
     ]
 
     for path in paths:
-
         try:
             return ImageFont.truetype(path, size)
-
         except OSError:
             continue
 
     return ImageFont.load_default()
 
 
-# ============================================================
-# СЕМЕЙНЫЙ КАЛЕНДАРЬ
-# ============================================================
-
 def load_birthdays():
 
-    with open(BIRTHDAYS_FILE, "r", encoding="utf-8") as file:
-
+    with open(BIRTHDAYS_FILE, encoding="utf-8") as file:
         return json.load(file)
 
 
-def calculate_age(birth_date, current_date):
+def calculate_age(birth_date, target_date):
 
     birthday = datetime.strptime(
-        birth_date,
-        "%Y-%m-%d"
+        birth_date, "%Y-%m-%d"
     ).date()
 
-    age = current_date.year - birthday.year
+    age = target_date.year - birthday.year
 
-    if (
-        current_date.month,
-        current_date.day
-    ) < (
-        birthday.month,
-        birthday.day
+    if (target_date.month, target_date.day) < (
+        birthday.month, birthday.day
     ):
-
         age -= 1
 
     return age
 
 
-def get_birthday(person, target_date):
+def get_message(person, year):
 
-    birthday = datetime.strptime(
-        person["birth_date"],
-        "%Y-%m-%d"
-    ).date()
+    seed = f"{person['name']}-{year}"
 
-    if (
-        birthday.month,
-        birthday.day
-    ) != (
-        target_date.month,
-        target_date.day
-    ):
+    rng = random.Random(seed)
 
-        return None
+    if person["relation"] == "mother":
+        messages = MOTHER_MESSAGES
 
-    result = person.copy()
-
-    result["age"] = calculate_age(
-        person["birth_date"],
-        target_date
-    )
-
-    return result
-
-
-# ============================================================
-# OPENAI — ГЕНЕРАЦИЯ ПОЗДРАВЛЕНИЯ
-# ============================================================
-
-def generate_greeting(person, year):
-
-    if not OPENAI_API_KEY:
-
-        raise RuntimeError(
-            "Не найден OPENAI_API_KEY."
-        )
-
-    name = person["name"]
-    age = person["age"]
-    relation = person["relation"]
-    address = person["address"]
-
-    if relation == "mother":
-
-        role = (
-            "Это любимая жена и мама детей. "
-            "Обращайся к ней тепло, как к любимой женщине."
-        )
-
-    elif relation == "daughter":
-
-        role = (
-            "Это дочь. "
-            "Обращайся к ней нежно и по-отцовски."
-        )
+    elif person["relation"] == "daughter":
+        messages = DAUGHTER_MESSAGES
 
     else:
+        messages = SON_MESSAGES
 
-        role = (
-            "Это сын. "
-            "Обращайся к нему тепло и по-отцовски."
-        )
+    return rng.choice(messages)
 
-    prompt = f"""
-Ты пишешь семейное поздравление от имени любящего отца
-своему родному человеку.
 
-Контекст:
-Имя: {name}
-Возраст: {age}
-Обращение: {address}
-Родство: {relation}
-Год: {year}
+# =====================================================
+# СОЗДАНИЕ ФОНА
+# =====================================================
 
-{role}
+def create_background(person, year):
 
-Требования:
-
-1. Поздравление должно быть искренним и душевным.
-2. Пиши от первого лица, как отец.
-3. Используй естественный русский язык.
-4. Не используй слишком литературные и искусственные выражения.
-5. Не делай текст похожим на официальную открытку.
-6. Добавь личную отцовскую теплоту.
-7. Упомяни день рождения и пожелания здоровья, счастья.
-8. Не повторяй банальные шаблоны.
-9. Не добавляй выдуманные события из жизни человека.
-10. Не упоминай искусственный интеллект.
-
-Объём: примерно 120–180 слов.
-
-Верни только готовый текст поздравления.
-"""
-
-    response = requests.post(
-        f"{OPENAI_URL}/chat/completions",
-
-        headers={
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        },
-
-        json={
-            "model": TEXT_MODEL,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "temperature": 0.9
-        },
-
-        timeout=120
+    rng = random.Random(
+        f"{person['name']}-{year}-design"
     )
 
-    response.raise_for_status()
+    design = rng.choice(DESIGNS)
 
-    data = response.json()
-
-    message = data["choices"][0]["message"]["content"]
-
-    return message.strip()
-
-
-# ============================================================
-# OPENAI — ГЕНЕРАЦИЯ ФОНОВОГО ИЗОБРАЖЕНИЯ
-# ============================================================
-
-def generate_background(person, year):
-
-    if not OPENAI_API_KEY:
-
-        raise RuntimeError(
-            "Не найден OPENAI_API_KEY."
-        )
-
-    relation = person["relation"]
-
-    if relation == "mother":
-
-        style = (
-            "elegant, warm, sophisticated, "
-            "beautiful flowers and soft golden light"
-        )
-
-    elif relation == "daughter":
-
-        style = (
-            "elegant, delicate, beautiful flowers, "
-            "warm sunlight and refined details"
-        )
-
-    else:
-
-        style = (
-            "elegant masculine design, "
-            "beautiful architecture, cinematic light"
-        )
-
-    prompt = f"""
-Create a premium birthday greeting card background.
-
-Visual direction:
-{style}
-
-Composition:
-- Vertical portrait 2:3 format.
-- Cinematic professional photography.
-- Beautiful atmospheric lighting.
-- Rich details and premium design.
-- Harmonious colors.
-- Tasteful decorative elements.
-- Sophisticated visual composition.
-- Suitable for a heartfelt family birthday greeting.
-
-IMPORTANT:
-Leave the central upper area relatively clean.
-Leave the lower central area clean for text overlay.
-
-Do not include any text.
-Do not include letters.
-Do not include numbers.
-Do not include logos.
-Do not include watermarks.
-
-Create a completely original composition.
-"""
-
-    response = requests.post(
-        f"{OPENAI_URL}/images/generations",
-
-        headers={
-            "Authorization": f"Bearer {OPENAI_API_KEY}",
-            "Content-Type": "application/json"
-        },
-
-        json={
-            "model": IMAGE_MODEL,
-            "prompt": prompt,
-            "size": "1024x1536",
-            "quality": "high"
-        },
-
-        timeout=300
-    )
-
-    response.raise_for_status()
-
-    data = response.json()
-
-    image_data = base64.b64decode(
-        data["data"][0]["b64_json"]
-    )
-
-    return Image.open(
-        __import__("io").BytesIO(image_data)
-    ).convert("RGB")
-
-
-# ============================================================
-# СОЗДАНИЕ ДИЗАЙНА ОТКРЫТКИ
-# ============================================================
-
-def create_fallback_background(seed):
-
-    random.seed(seed)
-
-    palette = random.choice(PALETTES)
-
-    image = Image.new(
-        "RGB",
-        (WIDTH, HEIGHT)
-    )
+    image = Image.new("RGB", (WIDTH, HEIGHT))
 
     draw = ImageDraw.Draw(image)
 
@@ -385,10 +238,9 @@ def create_fallback_background(seed):
 
         color = tuple(
             int(
-                palette["top"][i] * (1 - t)
-                + palette["bottom"][i] * t
+                design["top"][i] * (1 - t)
+                + design["bottom"][i] * t
             )
-
             for i in range(3)
         )
 
@@ -397,61 +249,72 @@ def create_fallback_background(seed):
             fill=color
         )
 
-    return image, palette
+    # Мягкое свечение
 
+    glow = Image.new(
+        "RGBA",
+        (WIDTH, HEIGHT),
+        (0, 0, 0, 0)
+    )
 
-def create_card_background(person, year):
+    gd = ImageDraw.Draw(glow)
 
-    try:
+    gd.ellipse(
+        (250, 100, 850, 700),
+        fill=(*design["accent"], 55)
+    )
 
-        logging.info(
-            "Генерируем фон открытки для %s",
-            person["name"]
+    glow = glow.filter(
+        ImageFilter.GaussianBlur(130)
+    )
+
+    image = Image.alpha_composite(
+        image.convert("RGBA"),
+        glow
+    )
+
+    draw = ImageDraw.Draw(image)
+
+    # Декоративные элементы
+
+    accent = design["accent"]
+
+    for i in range(18):
+
+        x = rng.randint(65, WIDTH - 65)
+        y = rng.randint(100, HEIGHT - 100)
+        radius = rng.randint(3, 12)
+
+        draw.ellipse(
+            (
+                x - radius,
+                y - radius,
+                x + radius,
+                y + radius
+            ),
+            fill=(*accent, rng.randint(45, 130))
         )
 
-        image = generate_background(
-            person,
-            year
-        )
+    draw.rounded_rectangle(
+        (35, 35, WIDTH - 35, HEIGHT - 35),
+        radius=35,
+        outline=accent,
+        width=3
+    )
 
-        image = image.resize(
-            (WIDTH, HEIGHT),
-            Image.Resampling.LANCZOS
-        )
-
-        palette = random.choice(PALETTES)
-
-        return image, palette
-
-    except Exception:
-
-        logging.exception(
-            "Не удалось создать AI-фон. Используем резервный дизайн."
-        )
-
-        return create_fallback_background(
-            f"{person['name']}-{year}"
-        )
+    return image, design
 
 
-# ============================================================
-# ТЕКСТ НА ОТКРЫТКЕ
-# ============================================================
+# =====================================================
+# РИСУЕМ ТЕКСТ
+# =====================================================
 
-def draw_centered_text(
-    draw,
-    text,
-    y,
-    font,
-    fill,
-    stroke_width=0
-):
+def centered_text(draw, text, y, font, color):
 
     bbox = draw.textbbox(
         (0, 0),
         text,
-        font=font,
-        stroke_width=stroke_width
+        font=font
     )
 
     width = bbox[2] - bbox[0]
@@ -462,119 +325,85 @@ def draw_centered_text(
         (x, y),
         text,
         font=font,
-        fill=fill,
-        stroke_width=stroke_width,
-        stroke_fill=(0, 0, 0, 180)
+        fill=color
     )
 
 
-def create_card(person, year, output_path):
+def wrap_text(draw, text, font, max_width):
 
-    image, palette = create_card_background(
+    words = text.split()
+
+    lines = []
+    current = ""
+
+    for word in words:
+
+        test = f"{current} {word}".strip()
+
+        if draw.textlength(test, font=font) <= max_width:
+            current = test
+
+        else:
+            if current:
+                lines.append(current)
+
+            current = word
+
+    if current:
+        lines.append(current)
+
+    return lines
+
+
+# =====================================================
+# СОЗДАЁМ ОТКРЫТКУ
+# =====================================================
+
+def create_card(person, target_date, output_path):
+
+    image, design = create_background(
         person,
-        year
-    )
-
-    image = image.convert("RGBA")
-
-    # Затемнение для читаемости текста
-
-    overlay = Image.new(
-        "RGBA",
-        image.size,
-        (0, 0, 0, 0)
-    )
-
-    overlay_draw = ImageDraw.Draw(overlay)
-
-    overlay_draw.rectangle(
-        (0, 0, WIDTH, HEIGHT),
-        fill=(0, 0, 0, 65)
-    )
-
-    image = Image.alpha_composite(
-        image,
-        overlay
+        target_date.year
     )
 
     draw = ImageDraw.Draw(image)
 
-    # Декоративная рамка
+    accent = design["accent"]
 
-    accent = palette["accent"]
-
-    draw.rounded_rectangle(
-        (45, 45, WIDTH - 45, HEIGHT - 45),
-        radius=35,
-        outline=accent,
-        width=3
-    )
-
-    # Верхняя надпись
-
-    draw_centered_text(
+    centered_text(
         draw,
         "С ДНЁМ РОЖДЕНИЯ",
         120,
-        get_font(36, True),
+        load_font(43, True),
         accent
     )
 
-    # Имя
-
-    name = person["name"]
-
-    name_font_size = 76
-
-    name_font = get_font(
-        name_font_size,
-        True
+    centered_text(
+        draw,
+        person["name"],
+        810,
+        load_font(76, True),
+        "white"
     )
 
-    while (
-        draw.textbbox(
-            (0, 0),
-            name,
-            font=name_font
-        )[2] > WIDTH - 130
-        and name_font_size > 42
-    ):
-
-        name_font_size -= 2
-
-        name_font = get_font(
-            name_font_size,
-            True
-        )
-
-    draw_centered_text(
-        draw,
-        name,
-        830,
-        name_font,
-        "white",
-        2
+    age = calculate_age(
+        person["birth_date"],
+        target_date
     )
 
-    # Возраст
-
-    age_text = f"{person['age']} лет"
-
-    draw_centered_text(
+    centered_text(
         draw,
-        age_text,
-        930,
-        get_font(55, True),
+        f"{age} лет",
+        915,
+        load_font(55, True),
         accent
     )
 
-    # Нижняя подпись
-
-    draw_centered_text(
+    centered_text(
         draw,
         "С любовью, папа ❤️",
-        1110,
-        get_font(38),
+        1120,
+        load_font(39, True),
         "white"
     )
 
@@ -583,74 +412,51 @@ def create_card(person, year, output_path):
         quality=95
     )
 
-    logging.info(
-        "Открытка сохранена: %s",
-        output_path
-    )
 
-
-# ============================================================
+# =====================================================
 # ПОДГОТОВКА ПОЗДРАВЛЕНИЯ
-# ============================================================
+# =====================================================
 
-def prepare_birthday(person, target_date):
-
-    year = target_date.year
+def prepare_person(person, target_date):
 
     CACHE_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
 
-    filename = (
-        f"{person['name']}_{year}"
-    )
+    filename = f"{person['name']}_{target_date.year}"
 
     image_path = CACHE_DIR / f"{filename}.jpg"
+    text_path = CACHE_DIR / f"{filename}.json"
 
-    message_path = CACHE_DIR / f"{filename}.json"
-
-    logging.info(
-        "Подготавливаем поздравление: %s",
-        person["name"]
-    )
-
-    # Если поздравление уже подготовлено,
-    # повторно не генерируем.
-
-    if image_path.exists() and message_path.exists():
-
-        logging.info(
-            "Готовое поздравление уже существует."
-        )
-
+    if image_path.exists() and text_path.exists():
+        logging.info("Уже подготовлено: %s", person["name"])
         return
 
-    message = generate_greeting(
+    age = calculate_age(
+        person["birth_date"],
+        target_date
+    )
+
+    message = get_message(
         person,
-        year
+        target_date.year
     )
 
     create_card(
         person,
-        year,
+        target_date,
         image_path
     )
 
     data = {
         "name": person["name"],
-        "age": person["age"],
+        "age": age,
         "date": target_date.isoformat(),
-        "message": message,
-        "image": image_path.name
+        "message": message
     }
 
-    with open(
-        message_path,
-        "w",
-        encoding="utf-8"
-    ) as file:
-
+    with open(text_path, "w", encoding="utf-8") as file:
         json.dump(
             data,
             file,
@@ -659,168 +465,19 @@ def prepare_birthday(person, target_date):
         )
 
     logging.info(
-        "Поздравление подготовлено: %s",
-        person["name"]
+        "Подготовлено: %s, возраст %s",
+        person["name"],
+        age
     )
 
 
-# ============================================================
-# ПОДГОТОВКА ЗАВТРАШНИХ ИМЕНИННИКОВ
-# ============================================================
+# =====================================================
+# ПРЕДПРОСМОТР
+# =====================================================
 
-def prepare_tomorrow():
-
-    tomorrow = datetime.now(TZ).date() + timedelta(days=1)
-
-    birthdays = load_birthdays()
-
-    found = 0
-
-    for person in birthdays:
-
-        birthday_person = get_birthday(
-            person,
-            tomorrow
-        )
-
-        if birthday_person:
-
-            prepare_birthday(
-                birthday_person,
-                tomorrow
-            )
-
-            found += 1
-
-    if found == 0:
-
-        logging.info(
-            "Завтра дней рождения нет."
-        )
-
-    else:
-
-        logging.info(
-            "Подготовлено поздравлений: %s",
-            found
-        )
-
-
-# ============================================================
-# ОТПРАВКА ПОЗДРАВЛЕНИЯ В TELEGRAM
-# ============================================================
-
-def send_telegram_photo(image_path, caption):
-
-    if not BOT_TOKEN or not GROUP_CHAT_ID:
-
-        raise RuntimeError(
-            "Не заданы BOT_TOKEN или GROUP_CHAT_ID."
-        )
-
-    url = (
-        f"https://api.telegram.org/"
-        f"bot{BOT_TOKEN}/sendPhoto"
-    )
-
-    with open(image_path, "rb") as photo:
-
-        response = requests.post(
-            url,
-
-            data={
-                "chat_id": GROUP_CHAT_ID,
-                "caption": caption
-            },
-
-            files={
-                "photo": photo
-            },
-
-            timeout=120
-        )
-
-    response.raise_for_status()
-
-    result = response.json()
-
-    if not result.get("ok"):
-
-        raise RuntimeError(
-            f"Ошибка Telegram: {result}"
-        )
-
-
-def send_today():
+def preview(name):
 
     today = datetime.now(TZ).date()
-
-    birthdays = load_birthdays()
-
-    found = 0
-
-    for person in birthdays:
-
-        birthday_person = get_birthday(
-            person,
-            today
-        )
-
-        if not birthday_person:
-
-            continue
-
-        found += 1
-
-        filename = (
-            f"{person['name']}_{today.year}"
-        )
-
-        image_path = CACHE_DIR / f"{filename}.jpg"
-
-        message_path = CACHE_DIR / f"{filename}.json"
-
-        if not image_path.exists() or not message_path.exists():
-
-            raise FileNotFoundError(
-                f"Не найдено заранее подготовленное поздравление: {filename}"
-            )
-
-        with open(
-            message_path,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            data = json.load(file)
-
-        caption = (
-            f"🎂 С днём рождения, {person['name']}!\n\n"
-            f"{data['message']}"
-        )
-
-        send_telegram_photo(
-            image_path,
-            caption
-        )
-
-        logging.info(
-            "Поздравление отправлено: %s",
-            person["name"]
-        )
-
-    if found == 0:
-
-        logging.info(
-            "Сегодня дней рождения нет."
-        )
-
-
-# ============================================================
-# ПРЕДВАРИТЕЛЬНЫЙ ПРОСМОТР
-# ============================================================
-
-def preview_birthday(name):
 
     people = load_birthdays()
 
@@ -833,50 +490,140 @@ def preview_birthday(name):
     )
 
     if not person:
+        raise ValueError("Человек не найден.")
 
-        raise ValueError(
-            f"Человек не найден: {name}"
-        )
-
-    today = datetime.now(TZ).date()
-
-    birth_date = datetime.strptime(
+    birthday = datetime.strptime(
         person["birth_date"],
         "%Y-%m-%d"
     ).date()
 
     target_date = date(
         today.year,
-        birth_date.month,
-        birth_date.day
+        birthday.month,
+        birthday.day
     )
 
     if target_date < today:
-
         target_date = date(
             today.year + 1,
-            birth_date.month,
-            birth_date.day
+            birthday.month,
+            birthday.day
         )
 
-    person["age"] = calculate_age(
-        person["birth_date"],
-        target_date
-    )
-
-    prepare_birthday(
+    prepare_person(
         person,
         target_date
     )
 
+    print("Предпросмотр создан.")
+    print("Имя:", person["name"])
     print(
-        f"Предпросмотр подготовлен для {name}"
+        "Возраст:",
+        calculate_age(person["birth_date"], target_date)
     )
 
 
-# ============================================================
+# =====================================================
+# ПОДГОТОВКА ЗАВТРАШНИХ ИМЕНИННИКОВ
+# =====================================================
+
+def prepare_tomorrow():
+
+    tomorrow = (
+        datetime.now(TZ).date()
+        + timedelta(days=1)
+    )
+
+    for person in load_birthdays():
+
+        birthday = datetime.strptime(
+            person["birth_date"],
+            "%Y-%m-%d"
+        ).date()
+
+        if (
+            birthday.month == tomorrow.month
+            and birthday.day == tomorrow.day
+        ):
+            prepare_person(
+                person,
+                tomorrow
+            )
+
+
+# =====================================================
+# ОТПРАВКА В TELEGRAM
+# =====================================================
+
+def send_today():
+
+    import os
+    import requests
+
+    token = os.getenv("BOT_TOKEN")
+    chat_id = os.getenv("GROUP_CHAT_ID")
+
+    if not token or not chat_id:
+        raise RuntimeError("Не заданы Telegram Secrets.")
+
+    today = datetime.now(TZ).date()
+
+    for person in load_birthdays():
+
+        birthday = datetime.strptime(
+            person["birth_date"],
+            "%Y-%m-%d"
+        ).date()
+
+        if (
+            birthday.month != today.month
+            or birthday.day != today.day
+        ):
+            continue
+
+        filename = f"{person['name']}_{today.year}"
+
+        image_path = CACHE_DIR / f"{filename}.jpg"
+        text_path = CACHE_DIR / f"{filename}.json"
+
+        if not image_path.exists() or not text_path.exists():
+            raise FileNotFoundError(
+                f"Нет подготовленной открытки: {filename}"
+            )
+
+        with open(text_path, encoding="utf-8") as file:
+            data = json.load(file)
+
+        caption = (
+            f"🎂 С днём рождения, {person['name']}!\n\n"
+            f"{data['message']}"
+        )
+
+        with open(image_path, "rb") as photo:
+
+            response = requests.post(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                data={
+                    "chat_id": chat_id,
+                    "caption": caption
+                },
+                files={
+                    "photo": photo
+                },
+                timeout=60
+            )
+
+        response.raise_for_status()
+
+        logging.info(
+            "Отправлено поздравление: %s",
+            person["name"]
+        )
+
+
+# =====================================================
 # ЗАПУСК
-# ============================================================
+# =====================================================
 
 def main():
 
@@ -884,11 +631,7 @@ def main():
 
     parser.add_argument(
         "action",
-        choices=[
-            "prepare",
-            "send",
-            "preview"
-        ]
+        choices=["preview", "prepare", "send"]
     )
 
     parser.add_argument(
@@ -898,7 +641,14 @@ def main():
 
     args = parser.parse_args()
 
-    if args.action == "prepare":
+    if args.action == "preview":
+
+        if not args.name:
+            raise ValueError("Укажи имя через --name")
+
+        preview(args.name)
+
+    elif args.action == "prepare":
 
         prepare_tomorrow()
 
@@ -906,19 +656,6 @@ def main():
 
         send_today()
 
-    elif args.action == "preview":
-
-        if not args.name:
-
-            raise ValueError(
-                "Для preview укажи --name"
-            )
-
-        preview_birthday(
-            args.name
-        )
-
 
 if __name__ == "__main__":
-
     main()
