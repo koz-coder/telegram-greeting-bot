@@ -213,11 +213,9 @@ def create_background(person, year):
     design = rng.choice(DESIGNS)
 
     image = Image.new("RGB", (WIDTH, HEIGHT))
-
     draw = ImageDraw.Draw(image)
 
     for y in range(HEIGHT):
-
         t = y / HEIGHT
 
         color = tuple(
@@ -228,13 +226,9 @@ def create_background(person, year):
             for i in range(3)
         )
 
-        draw.line(
-            (0, y, WIDTH, y),
-            fill=color
-        )
+        draw.line((0, y, WIDTH, y), fill=color)
 
     # Мягкое свечение
-
     glow = Image.new(
         "RGBA",
         (WIDTH, HEIGHT),
@@ -248,9 +242,7 @@ def create_background(person, year):
         fill=(*design["accent"], 55)
     )
 
-    glow = glow.filter(
-        ImageFilter.GaussianBlur(130)
-    )
+    glow = glow.filter(ImageFilter.GaussianBlur(130))
 
     image = Image.alpha_composite(
         image.convert("RGBA"),
@@ -258,16 +250,18 @@ def create_background(person, year):
     )
 
     draw = ImageDraw.Draw(image)
-
-    # Декоративные элементы
-
     accent = design["accent"]
 
+    # Декор только сверху и снизу — центральная область свободна для текста
     for i in range(18):
-
         x = rng.randint(65, WIDTH - 65)
-        y = rng.randint(100, HEIGHT - 100)
-        radius = rng.randint(3, 12)
+
+        if i < 9:
+            y = rng.randint(65, 280)
+        else:
+            y = rng.randint(1050, 1280)
+
+        radius = rng.randint(3, 9)
 
         draw.ellipse(
             (
@@ -276,7 +270,7 @@ def create_background(person, year):
                 x + radius,
                 y + radius
             ),
-            fill=(*accent, rng.randint(45, 130))
+            fill=(*accent, rng.randint(45, 110))
         )
 
     draw.rounded_rectangle(
@@ -343,6 +337,31 @@ def wrap_text(draw, text, font, max_width):
 # СОЗДАЁМ ОТКРЫТКУ
 # =====================================================
 
+def get_card_wish(person):
+
+    if person["relation"] == "mother":
+        return [
+            "Пусть в доме всегда",
+            "будут тепло, мир",
+            "и радость."
+        ]
+
+    elif person["relation"] == "daughter":
+        return [
+            "Пусть каждый день",
+            "приносит счастье,",
+            "любовь и улыбки."
+        ]
+
+    else:
+        return [
+            "Пусть каждый день",
+            "приносит радость,",
+            "силы и новые",
+            "возможности."
+        ]
+
+
 def create_card(person, target_date, output_path):
 
     image, design = create_background(
@@ -351,7 +370,6 @@ def create_card(person, target_date, output_path):
     )
 
     draw = ImageDraw.Draw(image)
-
     accent = design["accent"]
 
     centered_text(
@@ -361,6 +379,22 @@ def create_card(person, target_date, output_path):
         load_font(43, True),
         accent
     )
+
+    # Короткое пожелание в центре открытки
+    wish_lines = get_card_wish(person)
+    wish_font = load_font(39)
+
+    y = 440
+
+    for line in wish_lines:
+        centered_text(
+            draw,
+            line,
+            y,
+            wish_font,
+            "white"
+        )
+        y += 65
 
     centered_text(
         draw,
@@ -401,7 +435,7 @@ def create_card(person, target_date, output_path):
 # ПОДГОТОВКА ПОЗДРАВЛЕНИЯ
 # =====================================================
 
-def prepare_person(person, target_date):
+def prepare_person(person, target_date, force=False):
 
     CACHE_DIR.mkdir(
         parents=True,
@@ -413,7 +447,7 @@ def prepare_person(person, target_date):
     image_path = CACHE_DIR / f"{filename}.jpg"
     text_path = CACHE_DIR / f"{filename}.json"
 
-    if image_path.exists() and text_path.exists():
+    if image_path.exists() and text_path.exists() and not force:
         logging.info("Уже подготовлено: %s", person["name"])
         return
 
@@ -496,7 +530,8 @@ def preview(name):
 
     prepare_person(
         person,
-        target_date
+        target_date,
+        force=True
     )
 
     print("Предпросмотр создан.")
