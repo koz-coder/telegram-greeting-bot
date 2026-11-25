@@ -2,11 +2,11 @@ name: Daily Telegram Greeting
 
 on:
   schedule:
-    - cron: "0 4 * * *"   # 09:00 — утреннее приветствие
-    - cron: "0 5 * * *"   # 10:00 — курсы валют
-    - cron: "0 6 * * *"   # 11:00 — новости
-    - cron: "0 15 * * *"  # 20:00 — погода
-    - cron: "0 19 * * *"  # 00:00 — поздравление с праздником
+    - cron: "0 4 * * *"
+    - cron: "0 5 * * *"
+    - cron: "0 6 * * *"
+    - cron: "0 15 * * *"
+    - cron: "0 19 * * *"
 
   workflow_dispatch:
     inputs:
@@ -164,9 +164,7 @@ jobs:
         run: python daily_greeting.py
 
   birthday-preview:
-    if: |
-      github.event_name == 'workflow_dispatch' &&
-      inputs.task == 'birthday_preview'
+    if: github.event_name == 'workflow_dispatch' && inputs.task == 'birthday_preview'
     runs-on: ubuntu-latest
 
     steps:
