@@ -1,0 +1,44 @@
+[
+  {
+    "name": "Шахноза",
+    "birth_date": "1991-05-20",
+    "gender": "female",
+    "relation": "daughter",
+    "address": "Доченька"
+  },
+  {
+    "name": "Исломжон",
+    "birth_date": "1992-10-11",
+    "gender": "male",
+    "relation": "son",
+    "address": "Сынок"
+  },
+  {
+    "name": "Нозимжон",
+    "birth_date": "1995-09-01",
+    "gender": "male",
+    "relation": "son",
+    "address": "Сынок"
+  },
+  {
+    "name": "Козимжон",
+    "birth_date": "1998-12-01",
+    "gender": "male",
+    "relation": "son",
+    "address": "Сынок"
+  },
+  {
+    "name": "Носирхон",
+    "birth_date": "2000-07-04",
+    "gender": "male",
+    "relation": "son",
+    "address": "Сынок"
+  },
+  {
+    "name": "Дилфуза",
+    "birth_date": "1970-09-19",
+    "gender": "female",
+    "relation": "mother",
+    "address": "Любимая"
+  }
+]
